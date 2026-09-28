@@ -26,12 +26,15 @@ const (
 	schemaError = "urn:ietf:params:scim:schemas:core:2.0:Error"
 )
 
-// Provider is a minimal in-memory SCIM provider.
+// Provider is a minimal SCIM provider.
 type Provider struct {
 	mu     sync.RWMutex
 	users  map[string]map[string]any
 	groups map[string]map[string]any
 	next   int
+	// persist, when non-nil, routes Users/Groups through SQLite instead
+	// of the in-memory maps. NewStoreBacked sets it.
+	persist *sqlPersist
 }
 
 // NewProvider creates an empty provider.
@@ -123,6 +126,15 @@ func (p *Provider) createUser(w http.ResponseWriter, r *http.Request) {
 		scimError(w, http.StatusBadRequest, "userName required")
 		return
 	}
+	if p.persist != nil {
+		stored, err := p.StorePutUser(r.Context(), body)
+		if err != nil {
+			scimError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeSCIM(w, http.StatusCreated, stored)
+		return
+	}
 	p.mu.Lock()
 	p.next++
 	id := fmt.Sprintf("usr_%06d", p.next)
@@ -146,6 +158,22 @@ func (p *Provider) listUsers(w http.ResponseWriter, r *http.Request) {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
+	p.mu.RUnlock()
+	if p.persist != nil {
+		resources, total, err := p.StoreListUsers(r.Context(), startIndex, count)
+		if err != nil {
+			scimError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeSCIM(w, http.StatusOK, map[string]any{
+			"schemas":      []string{schemaList},
+			"totalResults": total,
+			"startIndex":   startIndex,
+			"itemsPerPage": len(resources),
+			"Resources":    resources,
+		})
+		return
+	}
 	total := len(ids)
 	if startIndex > 0 && startIndex <= len(ids) {
 		ids = ids[startIndex-1:]
@@ -156,6 +184,7 @@ func (p *Provider) listUsers(w http.ResponseWriter, r *http.Request) {
 		ids = ids[:count]
 	}
 	resources := make([]map[string]any, 0, len(ids))
+	p.mu.RLock()
 	for _, id := range ids {
 		resources = append(resources, p.users[id])
 	}
@@ -170,6 +199,15 @@ func (p *Provider) listUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Provider) getUser(w http.ResponseWriter, r *http.Request, id string) {
+	if p.persist != nil {
+		user, err := p.StoreGetUser(r.Context(), id)
+		if err != nil {
+			scimError(w, http.StatusNotFound, fmt.Sprintf("user %q not found", id))
+			return
+		}
+		writeSCIM(w, http.StatusOK, user)
+		return
+	}
 	p.mu.RLock()
 	user, ok := p.users[id]
 	p.mu.RUnlock()
@@ -184,6 +222,20 @@ func (p *Provider) putUser(w http.ResponseWriter, r *http.Request, id string) {
 	var body map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		scimError(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if p.persist != nil {
+		if _, err := p.StoreGetUser(r.Context(), id); err != nil {
+			scimError(w, http.StatusNotFound, fmt.Sprintf("user %q not found", id))
+			return
+		}
+		body["id"] = id
+		stored, err := p.StorePutUser(r.Context(), body)
+		if err != nil {
+			scimError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeSCIM(w, http.StatusOK, stored)
 		return
 	}
 	p.mu.Lock()
@@ -201,6 +253,14 @@ func (p *Provider) putUser(w http.ResponseWriter, r *http.Request, id string) {
 }
 
 func (p *Provider) deleteUser(w http.ResponseWriter, r *http.Request, id string) {
+	if p.persist != nil {
+		if err := p.StoreDeleteUser(r.Context(), id); err != nil {
+			scimError(w, http.StatusNotFound, fmt.Sprintf("user %q not found", id))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	p.mu.Lock()
 	_, ok := p.users[id]
 	if ok {
@@ -227,6 +287,15 @@ func (p *Provider) createGroup(w http.ResponseWriter, r *http.Request) {
 		scimError(w, http.StatusBadRequest, "displayName required")
 		return
 	}
+	if p.persist != nil {
+		stored, err := p.StorePutGroup(r.Context(), body)
+		if err != nil {
+			scimError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeSCIM(w, http.StatusCreated, stored)
+		return
+	}
 	p.mu.Lock()
 	gid := "grp_" + uuid.NewString()[:8]
 	body["id"] = gid
@@ -242,6 +311,21 @@ func (p *Provider) createGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Provider) listGroups(w http.ResponseWriter, r *http.Request) {
+	if p.persist != nil {
+		resources, total, err := p.StoreListGroups(r.Context(), 1, 1000)
+		if err != nil {
+			scimError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeSCIM(w, http.StatusOK, map[string]any{
+			"schemas":      []string{schemaList},
+			"totalResults": total,
+			"startIndex":   1,
+			"itemsPerPage": len(resources),
+			"Resources":    resources,
+		})
+		return
+	}
 	p.mu.RLock()
 	ids := make([]string, 0, len(p.groups))
 	for id := range p.groups {

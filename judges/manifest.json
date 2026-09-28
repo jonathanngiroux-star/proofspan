@@ -1,11 +1,16 @@
 {
   "namespace": "proofspan/llm-judge-registry",
-  "version": "v1.0.0",
+  "version": "v1.1.0",
   "judges": [
     {
       "id": "factual-consistency",
-      "model_fingerprint": "openai/gpt-4o-2024-08-06@sha256:UNPINNED-v0.1-NO-LIVE-JUDGE-EXECUTION",
-      "description": "Grades summary against retrieved docs. v0.1 ships the registry + validation; live judge execution and the real model hash land in v0.2.0-rc.1. judges.Load rejects empty fingerprints; replace UNPINNED with the real model hash before any judge assertion runs in CI."
+      "model_fingerprint": "builtin:factual-consistency@v1",
+      "description": "Deterministic reference judge: every number in an llm span's output must appear in some retrieval span's output. Offline, CI-safe."
+    },
+    {
+      "id": "semantic-consistency",
+      "model_fingerprint": "z-ai/glm-5.3@sha256:b742dc1b96291719802100d3ffd6bfdbf29051a6cd607b8ab9c74c2adf5d576f",
+      "description": "Live LLM judge over NVIDIA integrate endpoint. Verifies the served model matches the pin before grading; PASS/FAIL verdict with reason."
     }
   ]
 }

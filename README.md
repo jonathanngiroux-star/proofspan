@@ -10,12 +10,19 @@ CI-native agent evaluation harness. Replaces LangSmith / HoneyHive for startup e
 # 1. binary (Go 1.27+)
 go build -o proofspan ./cmd/proofspan
 
-# 2. migrate your existing traces (dry-run first, always)
+# 2. analyze your real export first (parse rate, field coverage, unknown keys)
+./proofspan report --from=langsmith traces.jsonl
+
+# 3. migrate your existing traces (dry-run first, always)
 ./proofspan migrate --from=langsmith --dry-run --format=json traces.jsonl
 
-# 3. ingest + gate
+# 4. ingest + gate
 ./proofspan migrate --from=langsmith --db=proofspan.sqlite traces.jsonl
 ./proofspan eval --db=proofspan.sqlite
+
+# 5. optional: pinned LLM judges (builtin judges need no key)
+export NVIDIA_API_KEY=nvapi-...
+./proofspan eval --db=proofspan.sqlite --trajectory=trj_001 --judges-run=factual-consistency,semantic-consistency
 ```
 
 Docker:
@@ -35,10 +42,13 @@ docker run --rm -v "$PWD/data:/data" -p 7400:7400 proofspan serve --db=/data/pro
 | LangSmith → ATF converter, >95% field parity | ✅ 100.00% on 10k-step corpus |
 | HoneyHive → ATF converter, >95% field parity | ✅ 100.00% on 10k-step corpus |
 | Dry-run migration diffs (machine-readable JSON) | ✅ |
+| Real-export corpus report (parse rate, unknown-key census) | ✅ `proofspan report` |
 | WASM assertion registry (span-correlation@1.0.0) | ✅ |
-| Judge registry, pinned model_fingerprint, validated pre-run | ✅ |
+| Judge registry with pinned `model_fingerprint`, validated pre-run | ✅ |
+| **Live LLM judge execution** (builtin + OpenAI-compatible HTTP) | ✅ fingerprint-verified, fail-closed |
 | SQLite store, single binary | ✅ |
-| Local serve + SCIM 2.0 minimal provider (feature-flagged) | ✅ |
+| SCIM 2.0 minimal provider (Users/Groups), store-backed | ✅ persists across restarts |
+| Local serve | ✅ |
 | Fidelity reports | ✅ `docs/fidelity/` |
 
 Parity and drift targets are enforced in CI — `go run ./cmd/fidelitygen` exits nonzero if any converter drops below 95% parity, 2% MAD drift, or 0.5% cost drift.
@@ -58,8 +68,9 @@ Full reports: `docs/fidelity/langsmith.md`, `docs/fidelity/honeyhive.md`.
 
 ```
 proofspan version
+proofspan report --from=langsmith|honeyhive [--out=DIR] FILE
 proofspan migrate --from=langsmith|honeyhive [--dry-run] [--format=json] [--db=DB] FILE
-proofspan eval [--db=DB] [--trajectory=ID] [--registry=DIR] [--judges=FILE] [--assertions=id@v,...]
+proofspan eval [--db=DB] [--trajectory=ID] [--registry=DIR] [--judges=FILE] [--assertions=id@v,...] [--judges-run=id,...]
 proofspan serve [--db=DB] [--addr=127.0.0.1:7400] [--scim]
 ```
 
@@ -76,9 +87,10 @@ proofspan serve [--db=DB] [--addr=127.0.0.1:7400] [--scim]
 | `internal/fidelity/` | parity / MAD / cost math |
 | `internal/eval/` | pinned-assertion runner |
 | `internal/assert/wasm/` | WASM runtime (wazero) + version-pinned registry |
-| `internal/judges/` | judge manifest validation |
+| `internal/judges/` | judge manifest validation + execution engine (builtin + HTTP providers, fingerprint enforcement) |
+| `internal/corpus/` | real-export analysis: parse rate, field coverage, unknown-key census |
 | `internal/serve/` | local HTTP server |
-| `internal/scim/` | SCIM 2.0 minimal provider (Users/Groups) |
+| `internal/scim/` | SCIM 2.0 minimal provider (Users/Groups), store-backed |
 | `registry/` | WASM assertion modules (span-correlation@1.0.0) |
 | `judges/manifest.json` | pinned judge registry |
 | `testdata/corpus/` | shared 10k-step corpus (generated, deterministic) |
@@ -87,6 +99,8 @@ proofspan serve [--db=DB] [--addr=127.0.0.1:7400] [--scim]
 
 ## Docs
 - `docs/migrate.md` — converter usage and field coverage
+- `docs/judges.md` — judge registry, fingerprint pinning, live execution
+- `docs/corpus/` — real-export corpus reports (generated)
 - `docs/pricing.md` — public pricing, no contact-sales theater
 - `docs/replacement-cost.md` — the 3x-savings worksheet
 - `docs/cold-start.md` — measured deploy time

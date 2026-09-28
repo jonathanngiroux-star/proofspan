@@ -48,6 +48,22 @@ func Open(path string) (*Store, error) {
 // Close closes the database.
 func (s *Store) Close() error { return s.db.Close() }
 
+// Exec runs a statement with no rows expected (DDL, DML). Exposed for
+// satellite schemas (SCIM) that live in the same single-file database.
+func (s *Store) Exec(query string, args ...any) (sql.Result, error) {
+	return s.db.Exec(query, args...)
+}
+
+// QueryRow returns a single-row query handle.
+func (s *Store) QueryRow(query string, args ...any) *sql.Row {
+	return s.db.QueryRow(query, args...)
+}
+
+// Query returns a multi-row result.
+func (s *Store) Query(query string, args ...any) (*sql.Rows, error) {
+	return s.db.Query(query, args...)
+}
+
 func (s *Store) migrate() error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS trajectories (

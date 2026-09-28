@@ -19,13 +19,18 @@ type Server struct {
 	scimOn   bool
 }
 
-// NewServer builds the server. scimEnabled toggles the SCIM minimal provider.
-func NewServer(st *store.Store, scimEnabled bool) *Server {
+// NewServer builds the server. scimEnabled toggles the SCIM minimal
+// provider; users/groups persist to the same SQLite file as trajectories.
+func NewServer(st *store.Store, scimEnabled bool) (*Server, error) {
 	s := &Server{store: st, scimOn: scimEnabled}
 	if scimEnabled {
-		s.provider = scim.NewProvider()
+		p, err := scim.NewStoreBacked(st)
+		if err != nil {
+			return nil, err
+		}
+		s.provider = p
 	}
-	return s
+	return s, nil
 }
 
 // Handler builds the HTTP mux.

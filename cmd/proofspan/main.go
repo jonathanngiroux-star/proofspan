@@ -11,8 +11,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"proofspan/internal/assert/wasm"
+	"proofspan/internal/corpus"
 	evalpkg "proofspan/internal/eval"
 	"proofspan/internal/judges"
 	"proofspan/internal/migrate/honeyhive"
@@ -42,6 +44,11 @@ func main() {
 			fmt.Fprintln(os.Stderr, "eval:", err)
 			os.Exit(1)
 		}
+	case "report":
+		if err := runReport(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, "report:", err)
+			os.Exit(1)
+		}
 	case "serve":
 		if err := runServe(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, "serve:", err)
@@ -60,8 +67,10 @@ commands:
   version                                             print binary and schema version
   migrate --from=SOURCE [--dry-run] [--db=DB] FILE   convert a SOURCE export (langsmith|honeyhive)
                                                      --dry-run prints a JSON plan, no writes
-  eval [--db=DB] --trajectory=ID                     run assertions over a stored trajectory
-  serve [--db=DB] [--addr=:7400] [--scim]             local server (SCIM flag-gated)
+  report --from=SOURCE [--out=DIR] FILE              analyze a real export pre-migration:
+                                                     parse rate, field coverage, unknown-key census
+  eval [--db=DB] [--trajectory=ID] [--judges-run=a,b] run assertions/judges over stored trajectories
+  serve [--db=DB] [--addr=:7400] [--scim]             local server (SCIM persists to SQLite)
 `)
 }
 
@@ -143,6 +152,7 @@ func runEval(args []string) error {
 	regDir := fs.String("registry", "registry/bin", "directory of compiled assertion .wasm modules")
 	judgesPath := fs.String("judges", "judges/manifest.json", "judge manifest (validated before assertions run)")
 	assertions := fs.String("assertions", "", "comma-separated id@version pins to run (default: span-correlation@1.0.0)")
+	runJudges := fs.String("judges-run", "", "comma-separated judge IDs to execute after assertions (e.g. factual-consistency)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -151,7 +161,6 @@ func runEval(args []string) error {
 	if err != nil {
 		return err
 	}
-	_ = manifest // fingerprints are recorded per-run once judge assertions exist in v0.2
 	st, err := store.Open(*dbPath)
 	if err != nil {
 		return err
@@ -162,6 +171,14 @@ func runEval(args []string) error {
 		return err
 	}
 	ctx := context.Background()
+	// judge execution engine: builtin providers run offline; HTTP providers
+	// need NVIDIA_API_KEY and execute live with fingerprint verification
+	apiKey := os.Getenv("NVIDIA_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("PROOFSPAN_JUDGE_API_KEY")
+	}
+	eng := judges.NewEngine(manifest).WithAPIKey(apiKey)
+	judgeIDs := splitCSV(*runJudges)
 	runner := evalpkg.NewRunner(reg)
 	pins := parsePins(*assertions)
 	if len(pins) == 0 {
@@ -176,6 +193,9 @@ func runEval(args []string) error {
 			return err
 		}
 		rep := runner.EvalTrajectory(ctx, spans)
+		if err := runJudgesOver(ctx, eng, st, judgeIDs, *traj, spans, rep); err != nil {
+			return err
+		}
 		return printEvalReport([]*evalpkg.TrajectoryReport{rep})
 	}
 	ids, err := st.ListTrajectoryIDs()
@@ -192,9 +212,103 @@ func runEval(args []string) error {
 		if rep.TrajectoryID == "" {
 			rep.TrajectoryID = id
 		}
+		if err := runJudgesOver(ctx, eng, st, judgeIDs, id, spans, rep); err != nil {
+			return err
+		}
 		reports = append(reports, rep)
 	}
 	return printEvalReport(reports)
+}
+
+// runJudgesOver executes requested judges over one trajectory and folds
+// their verdicts into the report + eval_runs persistence. No judges
+// requested → no-op. Judge errors mark the trajectory errored, never pass.
+func runJudgesOver(ctx context.Context, eng *judges.Engine, st *store.Store, judgeIDs []string, trajID string, spans []schema.Span, rep *evalpkg.TrajectoryReport) error {
+	for _, jid := range judgeIDs {
+		v, err := eng.Judge(ctx, jid, trajID, spans)
+		if err != nil {
+			rep.Errored++
+			fmt.Printf("judge %s: error: %v\n", jid, err)
+			continue
+		}
+		rep.Total++
+		switch v.Status {
+		case "pass":
+			rep.Passed++
+		case "fail":
+			rep.Failed++
+		default:
+			rep.Errored++
+		}
+		fmt.Printf("judge %s: %s (%s)\n", jid, v.Status, v.JudgeFingerprint)
+		if err := st.SaveEvalRun(store.EvalRun{
+			ID:               "judge-" + jid + "-" + trajID,
+			TrajectoryID:     trajID,
+			AssertionID:      "judge:" + jid,
+			AssertionVersion: "v1.1.0",
+			JudgeID:          jid,
+			JudgeFingerprint: v.JudgeFingerprint,
+			Status:           v.Status,
+			CreatedAtUnixMs:  time.Now().UnixMilli(),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// runReport analyzes a real vendor export without mutating it: parse rate,
+// known-field coverage, unknown-key census, markdown + JSON output.
+// This is the design-partner pre-migration report.
+func runReport(args []string) error {
+	fs := flag.NewFlagSet("report", flag.ContinueOnError)
+	from := fs.String("from", "", "source system: langsmith|honeyhive")
+	out := fs.String("out", "", "output dir for corpus report markdown (default: stdout only)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *from == "" {
+		return fmt.Errorf("--from is required (langsmith|honeyhive)")
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("exactly one input FILE required")
+	}
+	path := fs.Arg(0)
+	rep, err := corpus.Analyze(path, *from, corpus.KnownKeys(*from))
+	if err != nil {
+		return err
+	}
+	// machine-readable report on stdout ONLY (pipeable); status on stderr
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(rep); err != nil {
+		return err
+	}
+	if *out != "" {
+		if err := os.MkdirAll(*out, 0o755); err != nil {
+			return err
+		}
+		md := rep.Markdown(*from, path)
+		name := filepath.Join(*out, *from+".md")
+		if err := os.WriteFile(name, []byte(md), 0o644); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "corpus report written to %s\n", name)
+	}
+	return nil
 }
 
 func loadRegistry(dir string) (*wasm.Registry, error) {
@@ -290,7 +404,10 @@ func runServe(args []string) error {
 		return err
 	}
 	defer st.Close()
-	srv := servepkg.NewServer(st, *scimOn)
-	fmt.Printf("proofspan serve listening on %s (scim=%v)\n", *addr, *scimOn)
+	srv, err := servepkg.NewServer(st, *scimOn)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("proofspan serve listening on %s (scim=%v, db=%s)\n", *addr, *scimOn, *dbPath)
 	return http.ListenAndServe(*addr, srv.Handler())
 }
