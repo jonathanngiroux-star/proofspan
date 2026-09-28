@@ -1,0 +1,34 @@
+name: proofspan CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - name: Unit tests
+        run: go test ./...
+      - name: Regenerate shared corpus
+        run: go run ./cmd/corpusgen testdata/corpus
+      - name: Fidelity gate (parity ≥95%, MAD <2%, cost <0.5%)
+        run: go run ./cmd/fidelitygen testdata/corpus docs/fidelity
+      - name: Build
+        run: go build -o proofspan ./cmd/proofspan
+      - name: Migrate both sources
+        run: |
+          ./proofspan migrate --from=langsmith --db=ci.sqlite testdata/corpus/langsmith/corpus.jsonl
+          ./proofspan migrate --from=honeyhive --db=ci.sqlite testdata/corpus/honeyhive/corpus.jsonl
+      - name: Eval gate (span-correlation@1.0.0)
+        run: ./proofspan eval --db=ci.sqlite
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "0.21.9"
+          verb: call
+          args: eval --src=.

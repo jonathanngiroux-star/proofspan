@@ -1,0 +1,4 @@
+/proofspan
+/dist/
+*.sqlite
+*.db

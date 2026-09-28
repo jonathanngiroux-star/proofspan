@@ -1,0 +1,11 @@
+{
+  "namespace": "proofspan/llm-judge-registry",
+  "version": "v1.0.0",
+  "judges": [
+    {
+      "id": "factual-consistency",
+      "model_fingerprint": "openai/gpt-4o-2024-08-06@sha256:UNPINNED-v0.1-NO-LIVE-JUDGE-EXECUTION",
+      "description": "Grades summary against retrieved docs. v0.1 ships the registry + validation; live judge execution and the real model hash land in v0.2.0-rc.1. judges.Load rejects empty fingerprints; replace UNPINNED with the real model hash before any judge assertion runs in CI."
+    }
+  ]
+}

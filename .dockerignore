@@ -1,0 +1,10 @@
+.dagger
+.git
+.github
+*.sqlite
+*.db
+docs
+testdata/corpus/langsmith
+testdata/corpus/honeyhive
+testdata/corpus/atf
+proofspan

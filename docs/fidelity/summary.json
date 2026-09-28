@@ -1,0 +1,20 @@
+[
+  {
+    "source": "langsmith",
+    "spans_expected": 10000,
+    "spans_gotten": 10000,
+    "field_parity": 1,
+    "mad_drift": 0,
+    "cost_drift": 3.3648655186532344e-16,
+    "pass": true
+  },
+  {
+    "source": "honeyhive",
+    "spans_expected": 10000,
+    "spans_gotten": 10000,
+    "field_parity": 1,
+    "mad_drift": 0,
+    "cost_drift": 3.028378966787911e-15,
+    "pass": true
+  }
+]

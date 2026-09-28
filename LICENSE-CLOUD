@@ -1,0 +1,31 @@
+Business Source License 1.1
+
+Parameters
+
+Licensor: Proofspan contributors
+Licensed Work: Proofspan cloud tier (code under cloud/, when it exists)
+Additional Use Grant: You may use the Licensed Work for internal evaluation
+  and inside your own organization, provided you do not offer the Licensed
+  Work — or any service substantially built on it — to third parties as a
+  hosted or managed service.
+Change Date: 2030-09-27
+Change License: MIT
+
+Terms
+
+The Licensor hereby grants you the right to copy, modify, create derivative
+works, redistribute, and make non-production or internal production use of
+the Licensed Work under this Business Source License, subject to the
+Additional Use Grant and the following conditions: (a) you may not use the
+Licensed Work in a manner that conflicts with the Additional Use Grant;
+(b) you must retain this notice and the parameters above in all copies or
+substantial portions of the Licensed Work; (c) you may not remove or alter
+any proprietary notices. On the Change Date, the Licensed Work becomes
+available under the Change License. If the Licensor does not designate a
+Change Date, the Licensed Work is licensed under the Change License
+immediately upon publication as stipulated in the Business Source License
+1.1 reference text (https://fairsource.io/bsl11/).
+
+The Licensed Work is provided "AS IS", without warranty of any kind, express
+or implied, including but not limited to the warranties of merchantability,
+fitness for a particular purpose, and noninfringement.
