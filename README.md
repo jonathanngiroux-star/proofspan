@@ -1,117 +1,175 @@
 # Proofspan
 
-CI-native agent evaluation harness. Replaces LangSmith / HoneyHive for startup eng leads burning 4–6 hours/week pasting traces into spreadsheets.
+Proofspan is a self-hosted agent evaluation harness: it ingests existing LLM-agent traces, checks them against versioned assertions, and turns the result into a CI gate. It ships as a single Go binary with SQLite storage and no external services.
 
-**One Go binary. SQLite. MIT core.** Buyer: startup engineering leads with a $500–$2,000/mo line item they want to kill and traces they already own.
+It currently imports traces from **LangSmith** and **HoneyHive** exports, converts them into a neutral trace format (ATF v0.1.1), and runs assertions from a WASM registry — plus optional LLM judges whose models are cryptographically pinned in a manifest.
 
-## 5-minute deploy
+```
+$ proofspan version
+proofspan 0.1.1
+schema atf/v0.1.1
+```
+
+## Requirements
+
+- Go 1.27+ (build only; the binary is static, CGO disabled)
+- No runtime dependencies — SQLite is embedded (pure-Go driver)
+
+## Build
 
 ```sh
-# 1. binary (Go 1.27+)
+git clone https://github.com/jonathanngiroux-star/proofspan.git
+cd proofspan
 go build -o proofspan ./cmd/proofspan
-
-# 2. analyze your real export first (parse rate, field coverage, unknown keys)
-./proofspan report --from=langsmith traces.jsonl
-
-# 3. migrate your existing traces (dry-run first, always)
-./proofspan migrate --from=langsmith --dry-run --format=json traces.jsonl
-
-# 4. ingest + gate
-./proofspan migrate --from=langsmith --db=proofspan.sqlite traces.jsonl
-./proofspan eval --db=proofspan.sqlite
-
-# 5. optional: pinned LLM judges (builtin judges need no key)
-export NVIDIA_API_KEY=nvapi-...
-./proofspan eval --db=proofspan.sqlite --trajectory=trj_001 --judges-run=factual-consistency,semantic-consistency
 ```
 
 Docker:
 
 ```sh
 docker build -t proofspan .
-docker run --rm -v "$PWD/data:/data" proofspan migrate --from=langsmith --db=/data/proofspan.sqlite traces.jsonl
-docker run --rm -v "$PWD/data:/data" -p 7400:7400 proofspan serve --db=/data/proofspan.sqlite --scim
 ```
 
-`dagger call eval` runs the whole gate (tests → corpus → fidelity → migrate → eval) in CI. See `.github/workflows/ci.yml`.
+## Quickstart
 
-## What it does
+```sh
+# 1. Analyze a trace export before touching anything (read-only):
+./proofspan report --from=langsmith traces.jsonl
 
-| Capability | Status |
-|---|---|
-| LangSmith → ATF converter, >95% field parity | ✅ 100.00% on 10k-step corpus |
-| HoneyHive → ATF converter, >95% field parity | ✅ 100.00% on 10k-step corpus |
-| Dry-run migration diffs (machine-readable JSON) | ✅ |
-| Real-export corpus report (parse rate, unknown-key census) | ✅ `proofspan report` |
-| WASM assertion registry (span-correlation@1.0.0) | ✅ |
-| Judge registry with pinned `model_fingerprint`, validated pre-run | ✅ |
-| **Live LLM judge execution** (builtin + OpenAI-compatible HTTP) | ✅ fingerprint-verified, fail-closed |
-| SQLite store, single binary | ✅ |
-| SCIM 2.0 minimal provider (Users/Groups), store-backed | ✅ persists across restarts |
-| Local serve | ✅ |
-| Fidelity reports | ✅ `docs/fidelity/` |
+# 2. Preview the migration — machine-readable JSON, no writes:
+./proofspan migrate --from=langsmith --dry-run --format=json traces.jsonl
 
-Parity and drift targets are enforced in CI — `go run ./cmd/fidelitygen` exits nonzero if any converter drops below 95% parity, 2% MAD drift, or 0.5% cost drift.
+# 3. Ingest into SQLite:
+./proofspan migrate --from=langsmith --db=proofspan.sqlite traces.jsonl
+# migrated 400 trajectories, 10000 spans into proofspan.sqlite
 
-## Fidelity (the product)
+# 4. Run the eval gate over everything ingested:
+./proofspan eval --db=proofspan.sqlite
+# eval: 400/400 trajectories pass   (exit 0; any failure exits 1)
+```
 
-Converters are graded against a shared 10,000-step corpus generated deterministically in three formats (native ATF, LangSmith export, HoneyHive export). Regenerate with `go run ./cmd/corpusgen testdata/corpus && go run ./cmd/fidelitygen testdata/corpus docs/fidelity`:
+## Commands
 
-| Converter | Field parity | MAD drift | Cost drift |
+### `proofspan report --from=SOURCE [--out=DIR] FILE`
+
+Read-only pre-migration analysis of an export. Reports how many lines parse, which converter-mapped fields the export actually uses, and a census of keys the converter does not map yet (nothing is dropped silently — this is the list).
+
+JSON goes to stdout (pipeable); with `--out=DIR` a markdown report is also written.
+
+### `proofspan migrate --from=SOURCE [--dry-run] [--format=json] [--db=DB] FILE`
+
+`SOURCE` is `langsmith` or `honeyhive`; `FILE` is a line-delimited JSON export (one run/event object per line).
+
+- `--dry-run`: prints a conversion plan — counts, the full field-mapping table, dropped-field notes, and one fully converted sample span. No writes.
+- Without `--dry-run`: converts and ingests. Re-running on the same file is idempotent (trajectories are upserted, not duplicated).
+
+Field mappings for both sources are documented in [docs/migrate.md](docs/migrate.md).
+
+### `proofspan eval [--db=DB] [--trajectory=ID] [--assertions=a@v,...] [--judges-run=id,...]`
+
+Runs versioned assertions over stored trajectories:
+
+- **WASM assertions** come from `registry/` (compiled to `registry/bin/<id>@<version>.wasm`). The first is `span-correlation@1.0.0`, which verifies parent/child integrity: every `parent_span_id` must resolve, and children must not start before their parent ends.
+- **LLM judges** (optional, `--judges-run`) execute after assertions. Each judge is pinned to an exact model fingerprint in [judges/manifest.json](judges/manifest.json); the engine verifies the served model matches the pin *before* grading, and refuses to run otherwise. Verdicts are printed and persisted to the `eval_runs` table.
+
+Exit code is nonzero if any assertion or judge fails — designed to be a CI step.
+
+```sh
+# deterministic builtin judge only (offline, no API key):
+./proofspan eval --db=ps.sqlite --trajectory=trj_00001 --judges-run=factual-consistency
+
+# with a live LLM judge:
+export NVIDIA_API_KEY=nvapi-...   # build.nvidia.com key
+./proofspan eval --db=ps.sqlite --trajectory=trj_00001 \
+  --judges-run=factual-consistency,semantic-consistency
+```
+
+See [docs/judges.md](docs/judges.md) for fingerprint rules and the current registry.
+
+### `proofspan serve [--db=DB] [--addr=127.0.0.1:7400] [--scim]`
+
+Local HTTP server: `GET /healthz`, `GET /v1/trajectories`, `GET /v1/trajectories/{id}`, and (with `--scim`) a minimal SCIM 2.0 provider (`/scim/v2/Users`, `/scim/v2/Groups`, `/scim/v2/ServiceProviderConfig`). SCIM users and groups persist to the same SQLite file.
+
+## Trace format (ATF v0.1.1)
+
+Line-delimited JSON. One trajectory header, then spans:
+
+```json
+{"type":"trajectory","version":"atf/v0.1.1","trajectory_id":"trj_01","source":"native","started_at_unix_ms":1727452800000,"metadata":{}}
+{"type":"span","span_id":"spn_01","trajectory_id":"trj_01","name":"search_docs","kind":"tool","started_at_unix_ms":1727452800100,"ended_at_unix_ms":1727452800450,"input":"{...}","output":"{...}"}
+```
+
+Span kinds: `llm`, `tool`, `retrieval`, `custom`. Full type definitions in [`internal/schema/types.go`](internal/schema/types.go); a complete sample in [`testdata/corpus/example.jsonl`](testdata/corpus/example.jsonl).
+
+## Converter fidelity
+
+Both converters are measured against a shared 10,000-span corpus generated deterministically in all three formats (native ATF + simulated vendor exports), and the check runs in CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)):
+
+| Converter | Field parity | MAD token drift | Cost drift |
 |---|---|---|---|
 | LangSmith | 100.00% | 0.0000 | 0.00000 |
 | HoneyHive | 100.00% | 0.0000 | 0.00000 |
 
-Full reports: `docs/fidelity/langsmith.md`, `docs/fidelity/honeyhive.md`.
+CI fails below 95% field parity, 2% MAD drift, or 0.5% cost drift. Full reports: [docs/fidelity/langsmith.md](docs/fidelity/langsmith.md), [docs/fidelity/honeyhive.md](docs/fidelity/honeyhive.md).
 
-## CLI surface
+Reproduce locally:
 
-```
-proofspan version
-proofspan report --from=langsmith|honeyhive [--out=DIR] FILE
-proofspan migrate --from=langsmith|honeyhive [--dry-run] [--format=json] [--db=DB] FILE
-proofspan eval [--db=DB] [--trajectory=ID] [--registry=DIR] [--judges=FILE] [--assertions=id@v,...] [--judges-run=id,...]
-proofspan serve [--db=DB] [--addr=127.0.0.1:7400] [--scim]
+```sh
+go run ./cmd/corpusgen testdata/corpus     # regenerate the corpus (seed 42, deterministic)
+go run ./cmd/fidelitygen testdata/corpus docs/fidelity
 ```
 
-## Repo map
+## CI
 
-| Path | What |
-|---|---|
-| `cmd/proofspan/` | the binary |
-| `cmd/corpusgen/` | deterministic 10k-step corpus generator (3 formats) |
-| `cmd/fidelitygen/` | converter-vs-native comparison + CI gate |
-| `internal/schema/` | ATF v0.1.1 types |
-| `internal/store/` | SQLite persistence |
-| `internal/migrate/` | langsmith + honeyhive converters |
-| `internal/fidelity/` | parity / MAD / cost math |
-| `internal/eval/` | pinned-assertion runner |
-| `internal/assert/wasm/` | WASM runtime (wazero) + version-pinned registry |
-| `internal/judges/` | judge manifest validation + execution engine (builtin + HTTP providers, fingerprint enforcement) |
-| `internal/corpus/` | real-export analysis: parse rate, field coverage, unknown-key census |
-| `internal/serve/` | local HTTP server |
-| `internal/scim/` | SCIM 2.0 minimal provider (Users/Groups), store-backed |
-| `registry/` | WASM assertion modules (span-correlation@1.0.0) |
-| `judges/manifest.json` | pinned judge registry |
-| `testdata/corpus/` | shared 10k-step corpus (generated, deterministic) |
-| `docs/` | fidelity, pricing, migration, replacement-cost |
-| `.dagger/` | Dagger CI module (`dagger call eval`) |
+`dagger call eval` runs the full gate in one container: unit tests → corpus generation → fidelity checks → binary build → both migrations → eval over all trajectories. The same sequence runs in GitHub Actions via the `dagger-for-github` action.
 
-## Docs
-- `docs/migrate.md` — converter usage and field coverage
-- `docs/judges.md` — judge registry, fingerprint pinning, live execution
-- `docs/corpus/` — real-export corpus reports (generated)
-- `docs/pricing.md` — public pricing, no contact-sales theater
-- `docs/replacement-cost.md` — the 3x-savings worksheet
-- `docs/cold-start.md` — measured deploy time
-- `GOVERNANCE.md` — license split and change rules
+## Repository layout
+
+```
+cmd/proofspan/           CLI entry point
+cmd/corpusgen/           deterministic test-corpus generator (3 formats)
+cmd/fidelitygen/         converter-vs-native fidelity comparison (CI gate)
+cmd/judgerun/            judge execution harness (dev tool)
+internal/schema/         ATF v0.1.1 types
+internal/store/          SQLite persistence (trajectories, spans, eval runs)
+internal/migrate/        langsmith + honeyhive converters
+internal/fidelity/       parity / MAD / cost-drift math
+internal/eval/           assertion runner
+internal/assert/wasm/   WASM runtime (wazero) + version-pinned assertion registry
+internal/judges/         judge manifest validation + execution engine
+internal/corpus/         export analysis (report command)
+internal/serve/          local HTTP server
+internal/scim/           SCIM 2.0 provider (store-backed)
+registry/                WASM assertion sources (span-correlation@1.0.0)
+judges/manifest.json     pinned judge registry
+testdata/corpus/         shared 10k-span corpus (generated)
+docs/                    fidelity, corpus, judges, pricing, deployment docs
+.dagger/                 Dagger CI module
+```
+
+## Documentation
+
+- [docs/migrate.md](docs/migrate.md) — converter usage and complete field-mapping tables
+- [docs/judges.md](docs/judges.md) — judge registry, fingerprint pinning, execution rules
+- [docs/cold-start.md](docs/cold-start.md) — measured deployment times
+- [docs/pricing.md](docs/pricing.md) — hosted tiers (self-host core is free, MIT)
+- [docs/replacement-cost.md](docs/replacement-cost.md) — cost-comparison worksheet
+- [AGENTS.md](AGENTS.md) — build rules and scope for contributions
+- [GOVERNANCE.md](GOVERNANCE.md) — license policy and change process
+
+## Contributing
+
+DCO-only (`git commit -s`), no CLA. See [GOVERNANCE.md](GOVERNANCE.md).
+
+Every change should answer: does this improve converter fidelity, the CI gate, judge pinning, SCIM, or deployment time? If not, it is probably out of scope — see AGENTS.md.
+
+## Support the project
+
+If Proofspan saves you the eval-spreadsheet work, you can support development:
+
+- **Ethereum / USDC (ERC-20)**: `0x85ee7E71f762d772599cbF1EC20E651B30657521`
+- **Bitcoin**: `bc1qxe2zx5tv3hdreaej6s2x4p7han85uey828rrhg`
 
 ## License
 
-- Core: **MIT** — see LICENSE
-- Cloud tier (when it exists): BSL 1.1, Change Date 2030-09-27, Change License MIT — see LICENSE-CLOUD
-- DCO-only contributions, no CLA, license changes need 4/4 maintainers + 30-day notice + migration path — GOVERNANCE.md
-
-## What this is not
-
-No agent orchestration, no model serving, no playground, no "OS for AI agents", no third converter. Out of scope until 10 invoiced Cloud Pro teams (AGENTS.md). Fastest death for this product is platform scope before converter fidelity.
+- Core (everything in this repository): **MIT** — [LICENSE](LICENSE)
+- Future cloud tier: Business Source License 1.1 (Change Date 2030-09-27, converts to MIT) — [LICENSE-CLOUD](LICENSE-CLOUD)

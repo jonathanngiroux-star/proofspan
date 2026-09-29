@@ -24,7 +24,7 @@ import (
 	"proofspan/internal/store"
 )
 
-const versionString = "0.1.0"
+const versionString = "0.1.1"
 
 func main() {
 	if len(os.Args) < 2 {
