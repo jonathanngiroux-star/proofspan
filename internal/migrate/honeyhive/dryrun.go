@@ -51,16 +51,25 @@ func MigrateDryRun(w io.Writer, path string) error {
 		FieldMappings: Mappings(),
 		DroppedFields: Dropped(),
 	}
-	for _, spans := range res.SpansByTrajectory {
-		if len(spans) > 0 {
-			s := spans[0]
-			skel.SampleSpan = &s
-			break
-		}
-	}
+	skel.SampleSpan = earliestSpan(res.SpansByTrajectory)
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(skel)
+}
+
+// earliestSpan returns the span with the smallest start time across all
+// trajectories — a deterministic sample regardless of map iteration order.
+func earliestSpan(byTrajectory map[string][]schema.Span) *schema.Span {
+	var best *schema.Span
+	for _, spans := range byTrajectory {
+		for i := range spans {
+			if best == nil || spans[i].StartedAtUnixMs < best.StartedAtUnixMs {
+				s := spans[i]
+				best = &s
+			}
+		}
+	}
+	return best
 }
 
 func totalSpans(res *Result) int {

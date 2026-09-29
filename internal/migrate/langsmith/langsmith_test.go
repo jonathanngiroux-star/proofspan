@@ -46,6 +46,29 @@ func TestMigrateDryRunSkeleton(t *testing.T) {
 	}
 }
 
+// TestMigrateDryRunDeterministicSample pins the contract that the sample
+// span is the earliest-starting span, regardless of Go's randomized map
+// iteration order. (Caught by CI in a container after passing locally.)
+func TestMigrateDryRunDeterministicSample(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "runs.jsonl")
+	if err := os.WriteFile(path, []byte(fixture), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 50; i++ {
+		var buf bytes.Buffer
+		if err := MigrateDryRun(&buf, path); err != nil {
+			t.Fatal(err)
+		}
+		var skel DiffSkeleton
+		if err := json.Unmarshal(buf.Bytes(), &skel); err != nil {
+			t.Fatal(err)
+		}
+		if skel.SampleSpan == nil || skel.SampleSpan.SpanID != "run-0001" {
+			t.Fatalf("iteration %d: sample span must be the earliest (run-0001), got %+v", i, skel.SampleSpan)
+		}
+	}
+}
+
 func TestMigrateDryRunBadLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.jsonl")
 	if err := os.WriteFile(path, []byte("{not json}\n"), 0o644); err != nil {
