@@ -7,34 +7,34 @@ File: `testdata/corpus/honeyhive/corpus.jsonl`
 | Parsed lines | 10000 of 10000 |
 | Parse errors | 0 |
 | Trajectories (sessions) | 400 |
-| Analysis time | 79 ms |
+| Analysis time | 121 ms |
 
 ## Spans by run type
 
 | Type | Count |
 |---|---|
-| agent | 1007 |
-| model | 4063 |
-| retriever | 1978 |
-| tool | 2952 |
+| agent | 997 |
+| model | 4004 |
+| retriever | 1969 |
+| tool | 3030 |
 
 ## Known-field coverage
 
 | Field | Spans carrying it |
 |---|---|
-| cost | 4063 |
+| cost | 4004 |
 | endedAt | 10000 |
-| error | 206 |
+| error | 198 |
 | eventId | 10000 |
 | eventName | 10000 |
 | eventType | 10000 |
 | inputs | 10000 |
-| model | 4063 |
+| model | 4004 |
 | outputs | 10000 |
 | parentId | 9600 |
 | sessionId | 10000 |
 | startedAt | 10000 |
-| tokenUsage | 4063 |
+| tokenUsage | 4004 |
 | tokenUsage.completionTokens | 0 |
 | tokenUsage.promptTokens | 0 |
 

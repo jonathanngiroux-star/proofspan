@@ -13,7 +13,7 @@ Scenario: empty data dir → `docker run` (migrate 10k-step LangSmith corpus) �
 | `docker run` migrate (10,000 spans → SQLite) | ~0.9 s |
 | `docker run` eval (400 trajectories, 1 pinned WASM assertion) | 2.5 s |
 | **Full cold path, empty state → green gate** | **3.4 s** |
-| SQLite db size, 10k spans | 3.2 MiB |
+| SQLite db size, 10k spans | 3.4 MiB |
 
 Image build (golang:1.27-alpine multi-stage, cold layer cache): ~90 s on 6 cores. Warm rebuild: seconds.
 
