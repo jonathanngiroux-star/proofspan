@@ -239,3 +239,28 @@ func TestEngineAPIKeyOverrideWins(t *testing.T) {
 		t.Errorf("explicit override must beat provider env var, got %q", *lastAuth)
 	}
 }
+
+// TestEngineEndpointOverrideKeepsEnvKey is a regression test: an endpoint
+// override must NOT disable the provider's api_key_env lookup. Caught by
+// e2e against a fake provider (env key silently not sent).
+func TestEngineEndpointOverrideKeepsEnvKey(t *testing.T) {
+	const model = "env-key-plus-endpoint-model"
+	srv, lastAuth := fakeJudgeServer(t, model)
+	t.Setenv("TEST_PROOFSPAN_ENV_KEY_2", "env-key-still-sent")
+	m := writeProviderManifest(t, `{
+	  "namespace":"n/x","version":"v1.2.0",
+	  "providers":{"p":{"endpoint":"https://placeholder.invalid/v1","api_key_env":"TEST_PROOFSPAN_ENV_KEY_2"}},
+	  "judges":[{"id":"ekj","model_fingerprint":"`+model+`@sha256:abc","provider":"p"}]
+	}`)
+	eng := NewEngine(m).WithEndpoint(srv.URL + "/v1")
+	v, err := eng.Judge(context.Background(), "ekj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Status != "pass" {
+		t.Fatalf("endpoint override with env key must run, got %s: %s", v.Status, v.Detail)
+	}
+	if *lastAuth != "Bearer env-key-still-sent" {
+		t.Errorf("env-var key must still propagate under endpoint override, got %q", *lastAuth)
+	}
+}

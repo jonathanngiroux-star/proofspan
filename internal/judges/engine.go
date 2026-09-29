@@ -87,7 +87,7 @@ func (e *Engine) resolve(j Judge) (endpoint, apiKey string, err error) {
 		endpoint = p.Endpoint
 	}
 	apiKey = e.apiKey
-	if apiKey == "" && e.endpoint == "" {
+	if apiKey == "" {
 		p := e.manifest.Providers[j.Provider]
 		if p.APIKeyEnv != "" {
 			apiKey = os.Getenv(p.APIKeyEnv)
