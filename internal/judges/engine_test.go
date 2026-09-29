@@ -21,9 +21,12 @@ import (
 const testManifest = `{
 	"namespace": "proofspan/llm-judge-registry",
 	"version": "v1.1.0",
+	"providers": {
+		"test": {"endpoint": "http://placeholder.invalid/v1", "api_key_env": "TEST_JUDGE_KEY"}
+	},
 	"judges": [
 		{"id": "factual-consistency", "model_fingerprint": "builtin:factual-consistency@v1", "description": "deterministic reference judge"},
-		{"id": "conciseness", "model_fingerprint": "nvidia/llama-3.1-8b-instruct@sha256:abc123", "description": "HTTP judge"}
+		{"id": "conciseness", "model_fingerprint": "nvidia/llama-3.1-8b-instruct@sha256:abc123", "description": "HTTP judge", "provider": "test"}
 	]
 }`
 
@@ -120,8 +123,8 @@ func TestEngineHTTPJudgeVerifiesFingerprint(t *testing.T) {
 		w.Write([]byte(`{"choices":[{"message":{"content":"PASS"}}]}`))
 	}))
 	defer srv.Close()
-	eng := NewEngine(m).WithHTTPClient(srv.Client()).WithAPIKey("test-key")
-	res, err := eng.JudgeHTTP(context.Background(), "conciseness", "t1", spans, srv.URL+"/v1")
+	eng := NewEngine(m).WithHTTPClient(srv.Client()).WithAPIKey("test-key").WithEndpoint(srv.URL + "/v1")
+	res, err := eng.Judge(context.Background(), "conciseness", "t1", spans)
 	if err == nil {
 		t.Fatalf("expected fingerprint mismatch error, got result %+v", res)
 	}
@@ -140,8 +143,8 @@ func TestEngineHTTPJudgePassesOnMatch(t *testing.T) {
 		w.Write([]byte(`{"choices":[{"message":{"content":"FAIL: answer rambles"}}]}`))
 	}))
 	defer srv.Close()
-	eng := NewEngine(m).WithHTTPClient(srv.Client()).WithAPIKey("test-key")
-	res, err := eng.JudgeHTTP(context.Background(), "conciseness", "t1", spans, srv.URL+"/v1")
+	eng := NewEngine(m).WithHTTPClient(srv.Client()).WithAPIKey("test-key").WithEndpoint(srv.URL + "/v1")
+	res, err := eng.Judge(context.Background(), "conciseness", "t1", spans)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +158,7 @@ func TestEngineHTTPJudgePassesOnMatch(t *testing.T) {
 
 func TestEngineUnpinnedJudgeRefusesLiveCall(t *testing.T) {
 	// UNPINNED fingerprints (v0.1 placeholder) must refuse live execution
-	man := `{"namespace":"n","version":"v1.1.0","judges":[{"id":"u","model_fingerprint":"x@sha256:UNPINNED-v0.1-NO-LIVE-JUDGE-EXECUTION"}]}`
+	man := `{"namespace":"n","version":"v1.1.0","providers":{"p":{"endpoint":"https://x/v1"}},"judges":[{"id":"u","model_fingerprint":"x@sha256:UNPINNED-v0.1-NO-LIVE-JUDGE-EXECUTION","provider":"p"}]}`
 	path := filepath.Join(t.TempDir(), "m.json")
 	if err := os.WriteFile(path, []byte(man), 0o644); err != nil {
 		t.Fatal(err)

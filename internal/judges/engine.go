@@ -28,17 +28,20 @@ type Verdict struct {
 
 // Engine executes pinned judges over trajectories.
 //
-// Provider resolution by fingerprint prefix:
-//   builtin:<name>@<v>   deterministic reference implementation; offline, CI-safe
-//   <model>@sha256:<h>   OpenAI-compatible HTTP judge; NVIDIA_API_KEY env-keyed
-//
-// A judge whose fingerprint contains UNPINNED refuses execution — a placeholder
-// pin is a hard error, never a silent grade (uncontrolled LLM-as-judge drift
-// is a Series A killer).
+// Providers are declared in the manifest (OpenAI-compatible endpoint +
+// the env var holding the API key) and referenced by judges by name.
+// Resolution order per HTTP judge call:
+//  1. WithEndpoint / WithAPIKey overrides (CLI flags) win outright
+//  2. else the judge's provider: endpoint from the manifest; key from the
+//     provider's api_key_env environment variable (no-auth endpoints
+//     declare no api_key_env — local vLLM/ollama)
+// A judge whose fingerprint contains UNPINNED refuses execution — a
+// placeholder pin is a hard error, never a silent grade.
 type Engine struct {
-	manifest *Manifest
-	http     *http.Client
-	apiKey   string
+	manifest      *Manifest
+	http          *http.Client
+	apiKey        string // explicit override; beats provider env vars
+	endpoint      string // explicit override; beats provider endpoints
 }
 
 // NewEngine wires an engine over a validated manifest.
@@ -56,11 +59,49 @@ func (e *Engine) WithHTTPClient(c *http.Client) *Engine {
 	return e
 }
 
-// WithAPIKey sets the bearer token for HTTP judges. Empty key → HTTP
-// judges return an error telling the operator which env var to set.
+// WithAPIKey sets an explicit key override for HTTP judges, beating any
+// provider api_key_env. Only used for CLI flag injection.
 func (e *Engine) WithAPIKey(key string) *Engine {
 	e.apiKey = key
 	return e
+}
+
+// WithEndpoint sets an explicit endpoint override, beating provider
+// endpoints. Only used for CLI flag injection.
+func (e *Engine) WithEndpoint(endpoint string) *Engine {
+	e.endpoint = endpoint
+	return e
+}
+
+// resolve returns the endpoint and bearer key for an HTTP judge.
+// Precedence: explicit overrides > provider declaration > error naming
+// exactly which env var to set.
+func (e *Engine) resolve(j Judge) (endpoint, apiKey string, err error) {
+	endpoint = e.endpoint
+	if endpoint == "" {
+		p, ok := e.manifest.Providers[j.Provider]
+		if !ok {
+			// Load() should have caught this; belt and suspenders.
+			return "", "", fmt.Errorf("judge %q references unknown provider %q", j.ID, j.Provider)
+		}
+		endpoint = p.Endpoint
+	}
+	apiKey = e.apiKey
+	if apiKey == "" && e.endpoint == "" {
+		p := e.manifest.Providers[j.Provider]
+		if p.APIKeyEnv != "" {
+			apiKey = os.Getenv(p.APIKeyEnv)
+			if apiKey == "" {
+				return "", "", fmt.Errorf("judge %q: set %s to your API key for %s (or pass --judge-api-key)", j.ID, p.APIKeyEnv, j.Provider)
+			}
+		}
+		// empty APIKeyEnv: no-auth endpoint (local vLLM/ollama) — key stays ""
+	}
+	if apiKey != "" && !strings.HasPrefix(apiKey, "Bearer ") {
+		// served raw; normalize once
+		apiKey = apiKey
+	}
+	return endpoint, apiKey, nil
 }
 
 // Judge executes the named judge over the trajectory, resolving the
@@ -76,37 +117,25 @@ func (e *Engine) Judge(ctx context.Context, judgeID, trajectoryID string, spans 
 	if strings.HasPrefix(j.ModelFingerprint, "builtin:") {
 		return e.builtinJudge(ctx, j, trajectoryID, spans)
 	}
-	// HTTP judges need an endpoint; Judge() uses the default endpoint.
-	return e.JudgeHTTP(ctx, judgeID, trajectoryID, spans, defaultEndpoint())
-}
-
-func defaultEndpoint() string {
-	if v := os.Getenv("PROOFSPAN_JUDGE_ENDPOINT"); v != "" {
-		return v
+	// HTTP judge: resolve endpoint+key from overrides or the judge's provider.
+	endpoint, apiKey, err := e.resolve(j)
+	if err != nil {
+		return nil, err
 	}
-	return "https://integrate.api.nvidia.com/v1"
+	return e.judgeCall(ctx, j, trajectoryID, spans, endpoint, apiKey)
 }
 
-// JudgeHTTP executes an OpenAI-compatible HTTP judge at base endpoint.
-// The provider's reported model must match the pinned fingerprint's
+// judgeCall does the fingerprint verification and grading call against a
+// resolved endpoint. The served model must match the pinned fingerprint's
 // model segment exactly, or the call is refused before any grading.
-func (e *Engine) JudgeHTTP(ctx context.Context, judgeID, trajectoryID string, spans []schema.Span, endpoint string) (*Verdict, error) {
-	j, ok := e.manifest.Judge(judgeID)
-	if !ok {
-		return nil, fmt.Errorf("unknown judge %q", judgeID)
-	}
-	if strings.Contains(j.ModelFingerprint, "UNPINNED") {
-		return nil, fmt.Errorf("judge %q has an UNPINNED fingerprint: pin the real model hash before execution", judgeID)
-	}
+func (e *Engine) judgeCall(ctx context.Context, j Judge, trajectoryID string, spans []schema.Span, endpoint, apiKey string) (*Verdict, error) {
+	judgeID := j.ID
 	pinnedModel := j.ModelFingerprint
 	if i := strings.Index(pinnedModel, "@sha256:"); i > 0 {
 		pinnedModel = pinnedModel[:i]
 	}
-	if e.apiKey == "" {
-		return nil, fmt.Errorf("HTTP judge %q needs NVIDIA_API_KEY (or PROOFSPAN_JUDGE_API_KEY) set", judgeID)
-	}
 	// resolve the served model and compare against the pin
-	served, err := e.servedModel(ctx, endpoint, pinnedModel)
+	served, err := e.servedModel(ctx, endpoint, pinnedModel, apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("resolve model at %s: %w", endpoint, err)
 	}
@@ -127,7 +156,9 @@ func (e *Engine) JudgeHTTP(ctx context.Context, judgeID, trajectoryID string, sp
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := e.http.Do(req)
 	if err != nil {
@@ -174,12 +205,15 @@ func (e *Engine) JudgeHTTP(ctx context.Context, judgeID, trajectoryID string, sp
 }
 
 // servedModel fetches GET {endpoint}/models/{model} and returns its id.
-func (e *Engine) servedModel(ctx context.Context, endpoint, model string) (string, error) {
+// apiKey may be empty (no-auth local endpoints).
+func (e *Engine) servedModel(ctx context.Context, endpoint, model, apiKey string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(endpoint, "/")+"/models/"+model, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+e.apiKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 	resp, err := e.http.Do(req)
 	if err != nil {
 		return "", err

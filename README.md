@@ -69,7 +69,7 @@ Field mappings for both sources are documented in [docs/migrate.md](docs/migrate
 Runs versioned assertions over stored trajectories:
 
 - **WASM assertions** come from `registry/` (compiled to `registry/bin/<id>@<version>.wasm`). The first is `span-correlation@1.0.0`, which verifies parent/child integrity: every `parent_span_id` must resolve, and children must not start before their parent ends.
-- **LLM judges** (optional, `--judges-run`) execute after assertions. Each judge is pinned to an exact model fingerprint in [judges/manifest.json](judges/manifest.json); the engine verifies the served model matches the pin *before* grading, and refuses to run otherwise. Verdicts are printed and persisted to the `eval_runs` table.
+- **LLM judges** (optional, `--judges-run`) execute after assertions. Providers are user-declared in [judges/manifest.json](judges/manifest.json) — any OpenAI-compatible endpoint works (NVIDIA, OpenAI, OpenRouter, local vLLM/ollama), with the API key read from an environment variable named in the manifest (`api_key_env`), never stored in the repo. Each judge is pinned to an exact model fingerprint; the engine verifies the served model matches the pin *before* grading, and refuses to run otherwise. Verdicts are printed and persisted to the `eval_runs` table.
 
 Exit code is nonzero if any assertion or judge fails — designed to be a CI step.
 
@@ -77,13 +77,17 @@ Exit code is nonzero if any assertion or judge fails — designed to be a CI ste
 # deterministic builtin judge only (offline, no API key):
 ./proofspan eval --db=ps.sqlite --trajectory=trj_00001 --judges-run=factual-consistency
 
-# with a live LLM judge:
-export NVIDIA_API_KEY=nvapi-...   # build.nvidia.com key
+# with a live LLM judge (key comes from the provider's api_key_env):
+export NVIDIA_API_KEY=nvapi-...
 ./proofspan eval --db=ps.sqlite --trajectory=trj_00001 \
   --judges-run=factual-consistency,semantic-consistency
+
+# ad-hoc endpoint/key override (e.g. local vLLM), no manifest edit:
+./proofspan eval --db=ps.sqlite --judges-run=semantic-consistency \
+  --judge-endpoint http://localhost:8000/v1
 ```
 
-See [docs/judges.md](docs/judges.md) for fingerprint rules and the current registry.
+See [docs/judges.md](docs/judges.md) for provider declaration, fingerprint rules, and the current registry.
 
 ### `proofspan serve [--db=DB] [--addr=127.0.0.1:7400] [--scim]`
 

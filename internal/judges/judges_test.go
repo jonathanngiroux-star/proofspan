@@ -21,8 +21,11 @@ func TestValidateAcceptsGoodManifest(t *testing.T) {
 	path := writeManifest(t, `{
 		"namespace": "namespace/llm-judge-registry",
 		"version": "v1.0.0",
+		"providers": {
+			"openai": {"endpoint": "https://api.openai.com/v1", "api_key_env": "OPENAI_API_KEY"}
+		},
 		"judges": [
-			{"id": "factual-consistency", "model_fingerprint": "openai/gpt-4o-2024-08-06@sha256:abc123", "description": "grades summary vs docs"}
+			{"id": "factual-consistency", "model_fingerprint": "openai/gpt-4o-2024-08-06@sha256:abc123", "description": "grades summary vs docs", "provider": "openai"}
 		]
 	}`)
 	m, err := Load(path)
@@ -37,6 +40,9 @@ func TestValidateAcceptsGoodManifest(t *testing.T) {
 	}
 	if m.Judges[0].ModelFingerprint != "openai/gpt-4o-2024-08-06@sha256:abc123" {
 		t.Errorf("fingerprint not round-tripped: %q", m.Judges[0].ModelFingerprint)
+	}
+	if m.Judges[0].Provider != "openai" || m.Providers["openai"].APIKeyEnv != "OPENAI_API_KEY" {
+		t.Errorf("provider wiring wrong: %+v %+v", m.Judges[0], m.Providers)
 	}
 }
 
@@ -88,9 +94,10 @@ func TestValidateRejectsDuplicateJudgeIDs(t *testing.T) {
 func TestFingerprintLookup(t *testing.T) {
 	path := writeManifest(t, `{
 		"namespace": "n/x", "version": "v1.0.0",
+		"providers": {"p": {"endpoint": "https://x/v1"}},
 		"judges": [
-			{"id": "a", "model_fingerprint": "m1@sha256:1"},
-			{"id": "b", "model_fingerprint": "m2@sha256:2"}
+			{"id": "a", "model_fingerprint": "m1@sha256:1", "provider": "p"},
+			{"id": "b", "model_fingerprint": "builtin:m2@v1"}
 		]
 	}`)
 	m, err := Load(path)

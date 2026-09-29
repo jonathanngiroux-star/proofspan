@@ -35,11 +35,14 @@ func main() {
 		fatal(err)
 	}
 
-	apiKey := os.Getenv("NVIDIA_API_KEY")
-	if apiKey == "" {
-		apiKey = os.Getenv("PROOFSPAN_JUDGE_API_KEY")
+	// providers come from the manifest; env overrides for ad-hoc runs
+	eng := judges.NewEngine(m)
+	if k := os.Getenv("PROOFSPAN_JUDGE_API_KEY"); k != "" {
+		eng = eng.WithAPIKey(k)
 	}
-	eng := judges.NewEngine(m).WithAPIKey(apiKey)
+	if e := os.Getenv("PROOFSPAN_JUDGE_ENDPOINT"); e != "" {
+		eng = eng.WithEndpoint(e)
+	}
 
 	_, spans, err := st.GetTrajectory(trajID)
 	if err != nil {

@@ -153,6 +153,8 @@ func runEval(args []string) error {
 	judgesPath := fs.String("judges", "judges/manifest.json", "judge manifest (validated before assertions run)")
 	assertions := fs.String("assertions", "", "comma-separated id@version pins to run (default: span-correlation@1.0.0)")
 	runJudges := fs.String("judges-run", "", "comma-separated judge IDs to execute after assertions (e.g. factual-consistency)")
+	judgeAPIKey := fs.String("judge-api-key", "", "API key for HTTP judges (overrides the provider's api_key_env; prefer env vars)")
+	judgeEndpoint := fs.String("judge-endpoint", "", "endpoint override for HTTP judges, e.g. http://localhost:8000/v1 (beats the manifest)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -171,13 +173,16 @@ func runEval(args []string) error {
 		return err
 	}
 	ctx := context.Background()
-	// judge execution engine: builtin providers run offline; HTTP providers
-	// need NVIDIA_API_KEY and execute live with fingerprint verification
-	apiKey := os.Getenv("NVIDIA_API_KEY")
-	if apiKey == "" {
-		apiKey = os.Getenv("PROOFSPAN_JUDGE_API_KEY")
+	// Judge execution: providers are declared in the manifest (endpoint +
+	// the env var holding the key); --judge-api-key/--judge-endpoint are
+	// explicit overrides for ad-hoc providers. The key never persists.
+	eng := judges.NewEngine(manifest)
+	if *judgeAPIKey != "" {
+		eng = eng.WithAPIKey(*judgeAPIKey)
 	}
-	eng := judges.NewEngine(manifest).WithAPIKey(apiKey)
+	if *judgeEndpoint != "" {
+		eng = eng.WithEndpoint(*judgeEndpoint)
+	}
 	judgeIDs := splitCSV(*runJudges)
 	runner := evalpkg.NewRunner(reg)
 	pins := parsePins(*assertions)
