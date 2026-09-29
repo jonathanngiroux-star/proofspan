@@ -89,6 +89,13 @@ See [docs/judges.md](docs/judges.md) for fingerprint rules and the current regis
 
 Local HTTP server: `GET /healthz`, `GET /v1/trajectories`, `GET /v1/trajectories/{id}`, and (with `--scim`) a minimal SCIM 2.0 provider (`/scim/v2/Users`, `/scim/v2/Groups`, `/scim/v2/ServiceProviderConfig`). SCIM users and groups persist to the same SQLite file.
 
+**Security model:**
+
+- The server speaks plain HTTP. It binds `127.0.0.1` by default and is intended for localhost use or behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS. Do not expose the port directly to a network without a TLS-terminating proxy in front.
+- SCIM endpoints enforce bearer auth when `PROOFSPAN_SCIM_TOKEN` is set: requests without `Authorization: Bearer <token>` get `401` with the SCIM error schema. `/scim/v2/ServiceProviderConfig` stays public per RFC 7643 (capability discovery; it exposes no user data).
+- Without `PROOFSPAN_SCIM_TOKEN` SCIM is open — dev mode; acceptable only on localhost.
+- Token comparison is constant-time.
+
 ## Trace format (ATF v0.1.1)
 
 Line-delimited JSON. One trajectory header, then spans:

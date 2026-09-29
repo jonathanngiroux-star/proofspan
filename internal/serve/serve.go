@@ -21,12 +21,17 @@ type Server struct {
 
 // NewServer builds the server. scimEnabled toggles the SCIM minimal
 // provider; users/groups persist to the same SQLite file as trajectories.
-func NewServer(st *store.Store, scimEnabled bool) (*Server, error) {
+// scimToken, when non-empty, enforces bearer auth on SCIM endpoints;
+// empty token = documented dev mode (bind 127.0.0.1).
+func NewServer(st *store.Store, scimEnabled bool, scimToken string) (*Server, error) {
 	s := &Server{store: st, scimOn: scimEnabled}
 	if scimEnabled {
 		p, err := scim.NewStoreBacked(st)
 		if err != nil {
 			return nil, err
+		}
+		if scimToken != "" {
+			p.RequireBearer(scimToken)
 		}
 		s.provider = p
 	}

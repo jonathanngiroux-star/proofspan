@@ -29,7 +29,7 @@ func newTestServer(t *testing.T, scimOn bool) *httptest.Server {
 		StartedAtUnixMs: 1, EndedAtUnixMs: 2}}); err != nil {
 		t.Fatal(err)
 	}
-	srv, err := NewServer(st, scimOn)
+	srv, err := NewServer(st, scimOn, "")
 	if err != nil {
 		t.Fatal(err)
 	}

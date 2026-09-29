@@ -8,11 +8,13 @@
 package scim
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -35,6 +37,8 @@ type Provider struct {
 	// persist, when non-nil, routes Users/Groups through SQLite instead
 	// of the in-memory maps. NewStoreBacked sets it.
 	persist *sqlPersist
+	// bearer, when non-empty, is the required SCIM bearer token.
+	bearer string
 }
 
 // NewProvider creates an empty provider.
@@ -45,12 +49,42 @@ func NewProvider() *Provider {
 	}
 }
 
+// RequireBearer turns on bearer-token enforcement for all SCIM resource
+// endpoints. ServiceProviderConfig stays public (RFC 7643 capability
+// discovery). An empty token keeps dev mode: no enforcement — only
+// acceptable because serve binds 127.0.0.1 by default.
+func (p *Provider) RequireBearer(token string) {
+	p.bearer = token
+}
+
 // Mount registers all SCIM routes under prefix (e.g. /scim/v2).
 func (p *Provider) Mount(mux *http.ServeMux, prefix string) {
+	// ServiceProviderConfig is public per RFC 7643: IdPs probe it during
+	// configuration and it exposes no user data.
 	mux.HandleFunc(prefix+"/ServiceProviderConfig", p.serviceProviderConfig)
-	mux.HandleFunc(prefix+"/Users", p.usersHandler)
-	mux.HandleFunc(prefix+"/Users/", p.userHandler)
-	mux.HandleFunc(prefix+"/Groups", p.groupsHandler)
+	auth := p.authMiddleware
+	mux.Handle(prefix+"/Users", auth(http.HandlerFunc(p.usersHandler)))
+	mux.Handle(prefix+"/Users/", auth(http.HandlerFunc(p.userHandler)))
+	mux.Handle(prefix+"/Groups", auth(http.HandlerFunc(p.groupsHandler)))
+}
+
+// authMiddleware enforces the bearer token when one is configured.
+// Constant-time comparison (no early exit on first mismatching byte).
+func (p *Provider) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if p.bearer == "" {
+			next.ServeHTTP(w, r) // dev mode, documented
+			return
+		}
+		const prefix = "Bearer "
+		h := r.Header.Get("Authorization")
+		if !strings.HasPrefix(h, prefix) || subtle.ConstantTimeCompare([]byte(strings.TrimPrefix(h, prefix)), []byte(p.bearer)) != 1 {
+			w.Header().Set("WWW-Authenticate", prefix+`realm="proofspan-scim"`)
+			scimError(w, http.StatusUnauthorized, "invalid or missing bearer token")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (p *Provider) serviceProviderConfig(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +99,7 @@ func (p *Provider) serviceProviderConfig(w http.ResponseWriter, r *http.Request)
 		"etag": map[string]any{"supported": false},
 		"authenticationSchemes": []map[string]any{{
 			"name": "Bearer Token",
-			"description": "Static bearer token (v0.1); OIDC in v0.2",
+			"description": "Bearer token set via PROOFSPAN_SCIM_TOKEN; endpoints return 401 without it. OIDC in v0.2.",
 			"specUri": "https://datatracker.ietf.org/doc/html/rfc6750",
 			"type": "oauthbearertoken",
 			"primary": true,

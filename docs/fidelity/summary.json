@@ -5,7 +5,7 @@
     "spans_gotten": 10000,
     "field_parity": 1,
     "mad_drift": 0,
-    "cost_drift": 0,
+    "cost_drift": 1.7201345845317475e-15,
     "pass": true
   },
   {
@@ -14,7 +14,7 @@
     "spans_gotten": 10000,
     "field_parity": 1,
     "mad_drift": 0,
-    "cost_drift": 8.600672922658738e-16,
+    "cost_drift": 1.7201345845317474e-16,
     "pass": true
   }
 ]

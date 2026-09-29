@@ -417,10 +417,16 @@ func runServe(args []string) error {
 		return err
 	}
 	defer st.Close()
-	srv, err := servepkg.NewServer(st, *scimOn)
+	scimToken := os.Getenv("PROOFSPAN_SCIM_TOKEN")
+	srv, err := servepkg.NewServer(st, *scimOn, scimToken)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("proofspan serve listening on %s (scim=%v, db=%s)\n", *addr, *scimOn, *dbPath)
+	authNote := "open (dev mode: set PROOFSPAN_SCIM_TOKEN to require bearer auth)"
+	if scimToken != "" {
+		authNote = "bearer auth enforced"
+	}
+	fmt.Printf("proofspan serve listening on %s (scim=%v, auth=%s, db=%s)\n", *addr, *scimOn, authNote, *dbPath)
+	fmt.Printf("note: HTTP only — terminate TLS at your reverse proxy before exposing beyond localhost\n")
 	return http.ListenAndServe(*addr, srv.Handler())
 }
