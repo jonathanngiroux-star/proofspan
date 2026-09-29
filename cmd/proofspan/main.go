@@ -240,7 +240,11 @@ func runJudgesOver(ctx context.Context, eng *judges.Engine, st *store.Store, jud
 		default:
 			rep.Errored++
 		}
-		fmt.Printf("judge %s: %s (%s)\n", jid, v.Status, v.JudgeFingerprint)
+		fmt.Printf("judge %s: %s (%s) %s\n", jid, v.Status, v.JudgeFingerprint, v.Detail)
+		detail := map[string]any{"detail": v.Detail, "score": v.Score}
+		if len(v.Raw) > 0 {
+			detail["raw"] = json.RawMessage(v.Raw)
+		}
 		if err := st.SaveEvalRun(store.EvalRun{
 			ID:               "judge-" + jid + "-" + trajID,
 			TrajectoryID:     trajID,
@@ -249,6 +253,7 @@ func runJudgesOver(ctx context.Context, eng *judges.Engine, st *store.Store, jud
 			JudgeID:          jid,
 			JudgeFingerprint: v.JudgeFingerprint,
 			Status:           v.Status,
+			Detail:           mustJSON(detail),
 			CreatedAtUnixMs:  time.Now().UnixMilli(),
 		}); err != nil {
 			return err
@@ -389,6 +394,14 @@ func printEvalReport(reports []*evalpkg.TrajectoryReport) error {
 		}
 	}
 	return nil
+}
+
+func mustJSON(v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return json.RawMessage("{}")
+	}
+	return json.RawMessage(b)
 }
 
 func runServe(args []string) error {

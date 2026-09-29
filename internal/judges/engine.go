@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -204,10 +205,14 @@ func (e *Engine) builtinJudge(ctx context.Context, j Judge, trajectoryID string,
 	v := &Verdict{JudgeID: j.ID, JudgeFingerprint: j.ModelFingerprint, TrajectoryID: trajectoryID}
 	switch j.ID {
 	case "factual-consistency":
+		// Grounding rule: every fact token cited by an llm span must appear
+		// in some retrieval span's output. Facts are fact_<traj>_<num> tokens;
+		// free numbers are NOT checked (span counters, token counts, etc.
+		// would false-positive — caught by testing against the corpus).
 		nums := map[string]bool{}
 		for _, s := range spans {
 			if s.Kind == "retrieval" {
-				for _, n := range extractNumbers(s.Output) {
+				for _, n := range extractFacts(s.Output) {
 					nums[n] = true
 				}
 			}
@@ -216,10 +221,10 @@ func (e *Engine) builtinJudge(ctx context.Context, j Judge, trajectoryID string,
 			if s.Kind != "llm" {
 				continue
 			}
-			for _, n := range extractNumbers(s.Output) {
+			for _, n := range extractFacts(s.Output) {
 				if !nums[n] {
 					v.Status = "fail"
-					v.Detail = fmt.Sprintf("llm span %s cites number %q not present in any retrieval output", s.SpanID, n)
+					v.Detail = fmt.Sprintf("llm span %s cites fact %q not present in any retrieval output", s.SpanID, n)
 					return v, nil
 				}
 			}
@@ -232,24 +237,14 @@ func (e *Engine) builtinJudge(ctx context.Context, j Judge, trajectoryID string,
 	}
 }
 
-func extractNumbers(s string) []string {
-	var out []string
-	cur := strings.Builder{}
-	for _, r := range s {
-		if r >= '0' && r <= '9' {
-			cur.WriteRune(r)
-			continue
-		}
-		if cur.Len() > 0 {
-			out = append(out, cur.String())
-			cur.Reset()
-		}
-	}
-	if cur.Len() > 0 {
-		out = append(out, cur.String())
-	}
-	return out
+// extractFacts pulls fact_<traj>_<num> tokens from a payload. The corpus
+// (and design partners) tag claims this way; free numbers are ignored —
+// span counters and token counts would otherwise false-positive.
+func extractFacts(s string) []string {
+	return factPattern.FindAllString(s, -1)
 }
+
+var factPattern = regexp.MustCompile(`fact_\d+_\d+`)
 
 func buildJudgePrompt(j Judge, spans []schema.Span) string {
 	var b strings.Builder

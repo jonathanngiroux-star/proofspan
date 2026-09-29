@@ -54,6 +54,9 @@ func main() {
 		// session user/env metadata
 		user := fmt.Sprintf("u_%03d", rng.Intn(200))
 		env := pick(rng, "prod,staging,dev")
+		// one fact per trajectory: retrieval outputs cite it, llm outputs
+		// ground in it (or deliberately don't — the planted defect)
+		fact := fmt.Sprintf("fact_%d_%d", trajCount, 100+rng.Intn(900))
 		atf = append(atf, fmt.Sprintf(`{"type":"trajectory","version":"atf/v0.1.1","trajectory_id":%q,"source":"native","started_at_unix_ms":%d,"metadata":{"user":%q,"env":%q}}`, trajID, start, user, env))
 		ls = append(ls, "") // langsmith export has no separate header line
 		var parent string
@@ -73,9 +76,23 @@ func main() {
 			}
 			s := start + int64(i)*1500
 			e := s + int64(200+rng.Intn(1200))
+			// Payload realism for the builtin factual-consistency judge:
+			// retrieval outputs cite the trajectory's fact; llm outputs ground
+			// in it — except ~20% that deliberately cite a wrong fact
+			// (planted defect the judge must catch).
+			grounded := ""
+			if kind == "retrieval" {
+				grounded = fact
+			} else if kind == "llm" {
+				if rng.Intn(5) == 0 {
+					grounded = fmt.Sprintf("fact_%d_%d", trajCount, 100+rng.Intn(900)) // planted defect
+				} else {
+					grounded = fact
+				}
+			}
 			// vendor payloads are raw JSON objects...
 			input := fmt.Sprintf(`{"%s_input":"payload_%d"}`, kind, spans)
-			output := fmt.Sprintf(`{"%s_output":"result_%d"}`, kind, spans)
+			output := fmt.Sprintf(`{"%s_output":"result_%d %s"}`, kind, spans, grounded)
 			// ...while ATF stores them as JSON-encoded strings (matching converter output)
 			inputStr, _ := json.Marshal(input)
 			outputStr, _ := json.Marshal(output)

@@ -39,10 +39,10 @@ func testJudgeSetup(t *testing.T) (*Manifest, []schema.Span) {
 	}
 	spans := []schema.Span{
 		{Type: "span", SpanID: "s1", TrajectoryID: "t1", Kind: "retrieval", Name: "fetch_docs",
-			Input: `{"query":"refund policy"}`, Output: `{"docs":"30-day refunds"}`,
+			Input: `{"query":"refund policy"}`, Output: `{"docs":"30-day refunds fact_1_100"}`,
 			StartedAtUnixMs: 100, EndedAtUnixMs: 200},
 		{Type: "span", SpanID: "s2", TrajectoryID: "t1", ParentSpanID: "s1", Kind: "llm", Name: "answer",
-			Input: `{"question":"What is the refund policy?"}`, Output: `{"answer":"Refunds within 30 days"}`,
+			Input: `{"question":"What is the refund policy?"}`, Output: `{"answer":"Refunds within 30 days fact_1_100"}`,
 			StartedAtUnixMs: 210, EndedAtUnixMs: 400},
 	}
 	return m, spans
@@ -66,8 +66,8 @@ func TestEngineExecutesBuiltinJudge(t *testing.T) {
 func TestEngineBuiltinFailsOnInconsistency(t *testing.T) {
 	m, _ := testJudgeSetup(t)
 	spans := []schema.Span{
-		{SpanID: "s1", TrajectoryID: "t1", Kind: "retrieval", Output: `{"docs":"90-day refunds"}`},
-		{SpanID: "s2", TrajectoryID: "t1", Kind: "llm", Output: `{"answer":"Refunds within 30 days"}`},
+		{SpanID: "s1", TrajectoryID: "t1", Kind: "retrieval", Output: `{"docs":"90-day refunds fact_1_100"}`},
+		{SpanID: "s2", TrajectoryID: "t1", Kind: "llm", Output: `{"answer":"Refunds within 30 days fact_1_999"}`},
 	}
 	eng := NewEngine(m)
 	res, err := eng.Judge(context.Background(), "factual-consistency", "t1", spans)
@@ -75,7 +75,29 @@ func TestEngineBuiltinFailsOnInconsistency(t *testing.T) {
 		t.Fatal(err)
 	}
 	if res.Status != "fail" {
-		t.Errorf("docs say 90-day, answer says 30-day → must fail, got %s", res.Status)
+		t.Errorf("docs cite fact_1_100, answer cites fact_1_999 → must fail, got %s", res.Status)
+	}
+	if !strings.Contains(res.Detail, "fact_1_999") {
+		t.Errorf("detail must name the ungrounded fact: %s", res.Detail)
+	}
+}
+
+func TestEngineBuiltinIgnoresFreeNumbers(t *testing.T) {
+	// span counters, token counts, and dates must NOT trip the judge —
+	// only fact tokens are grounding claims (regression test for the
+	// false-positive found running the judge over the real corpus)
+	m, _ := testJudgeSetup(t)
+	spans := []schema.Span{
+		{SpanID: "s1", TrajectoryID: "t1", Kind: "retrieval", Output: `{"retrieval_output":"result_54 fact_1_100"}`},
+		{SpanID: "s2", TrajectoryID: "t1", Kind: "llm", Output: `{"llm_output":"result_77 fact_1_100"}`},
+	}
+	eng := NewEngine(m)
+	res, err := eng.Judge(context.Background(), "factual-consistency", "t1", spans)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != "pass" {
+		t.Errorf("counter digits must not trip grounding (fact matches): got %s (%s)", res.Status, res.Detail)
 	}
 }
 
