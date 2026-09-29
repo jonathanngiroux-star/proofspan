@@ -29,8 +29,12 @@ jobs:
         run: ./proofspan eval --db=ci.sqlite
       - name: Judge gate (planted defect must fail, clean must pass)
         run: |
-          ./proofspan eval --db=ci.sqlite --trajectory=trj_00001 --judges-run=factual-consistency > /dev/null 2>&1; test $? -eq 1
-          ./proofspan eval --db=ci.sqlite --trajectory=trj_00003 --judges-run=factual-consistency > /dev/null 2>&1; test $? -eq 0
+          if ./proofspan eval --db=ci.sqlite --trajectory=trj_00001 --judges-run=factual-consistency > /dev/null 2>&1; then
+            echo "planted trajectory unexpectedly passed the judge"; exit 1
+          fi
+          if ! ./proofspan eval --db=ci.sqlite --trajectory=trj_00003 --judges-run=factual-consistency > /dev/null 2>&1; then
+            echo "clean trajectory failed the judge"; exit 1
+          fi
           echo "judge gate: planted defect caught, clean trajectory passed"
       - uses: dagger/dagger-for-github@v7
         with:
