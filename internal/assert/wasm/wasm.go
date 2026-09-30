@@ -20,7 +20,7 @@ import (
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // Result is one assertion outcome over one trajectory.

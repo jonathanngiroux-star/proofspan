@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"proofspan/internal/assert/wasm"
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/assert/wasm"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // fake registry for runner logic tests — WASM execution is covered in

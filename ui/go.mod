@@ -1,4 +1,4 @@
-module proofspan/ui
+module github.com/jonathanngiroux-star/proofspan/ui
 
 go 1.27
 

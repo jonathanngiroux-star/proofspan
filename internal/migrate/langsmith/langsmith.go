@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // Run mirrors one JSONL line of a LangSmith run export.

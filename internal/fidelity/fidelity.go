@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // ParityThreshold is the CI gate: converters must match ≥95% of fields.

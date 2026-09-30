@@ -13,7 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"proofspan/ui/internal/app"
+	"github.com/jonathanngiroux-star/proofspan/ui/internal/app"
 )
 
 var (

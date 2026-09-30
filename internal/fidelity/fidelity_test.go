@@ -4,7 +4,7 @@ import (
 	"math"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 func mustSpan(id, name, kind string, tokP, tokC int64, cost float64) schema.Span {

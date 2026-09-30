@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
 // SCIM endpoints enforce bearer auth when a token is configured.

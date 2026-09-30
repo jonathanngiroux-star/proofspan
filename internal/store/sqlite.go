@@ -9,7 +9,7 @@ import (
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver, registers "sqlite"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // Store wraps the SQLite database holding trajectories, spans, and eval runs.

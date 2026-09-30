@@ -6,27 +6,46 @@ It currently imports traces from **LangSmith** and **HoneyHive** exports, conver
 
 ```
 $ proofspan version
-proofspan 0.1.1
+proofspan 0.2.0
 schema atf/v0.1.1
 ```
 
-## Requirements
+## Install
 
-- Go 1.27+ (build only; the binary is static, CGO disabled)
-- No runtime dependencies — SQLite is embedded (pure-Go driver)
+One entry point: `proofspan` opens the TUI in a terminal, `proofspan desktop` opens the GUI, and every other word is the CLI. All three are separate binaries; installing all three gives you the complete product:
 
-## Build
+```sh
+# CLI + dispatcher (proofspan, proofspan desktop, proofspan tui)
+go install github.com/jonathanngiroux-star/proofspan/cmd/proofspan@latest
+# TUI (what bare `proofspan` launches)
+go install github.com/jonathanngiroux-star/proofspan/ui/cmd/proofspan-tui@latest
+# GUI (what `proofspan desktop` launches; needs a C compiler + OpenGL headers)
+go install github.com/jonathanngiroux-star/proofspan/ui/cmd/proofspan-gui@latest
+```
+
+Then in any terminal:
+
+```
+$ proofspan            # TUI (interactive terminals only; scripts/CI get the CLI)
+$ proofspan desktop    # GUI
+$ proofspan tui        # TUI even when piped
+$ proofspan migrate …  # CLI as usual
+```
+
+- If a front-end binary isn't installed, `proofspan` tells you exactly which `go install` command to run — the CLI keeps working regardless.
+- `PROOFSPAN_TUI_BIN` / `PROOFSPAN_GUI_BIN` override the binary paths.
+- **Windows/PowerShell**: works the same — `proofspan` in PowerShell opens the TUI, `proofspan desktop` opens the GUI. Install with the same `go install` commands (Go for Windows required; the GUI additionally needs a C compiler, e.g. MSYS2/mingw-w64).
+- The bare `proofspan` launch only fires on a real interactive terminal. Piped or redirected stdin (scripts, cron, CI) safely gets the CLI — it will never hang waiting on a TUI.
+
+## Build from source
 
 ```sh
 git clone https://github.com/jonathanngiroux-star/proofspan.git
 cd proofspan
 go build -o proofspan ./cmd/proofspan
-```
-
-Docker:
-
-```sh
-docker build -t proofspan .
+# front-ends live in ui/ (separate module — Fyne/bubbletea deps stay out of the core binary):
+go build -C ui/cmd/proofspan-tui -o proofspan-tui .
+go build -C ui/cmd/proofspan-gui -o proofspan-gui .   # needs a C compiler + OpenGL/X11 headers
 ```
 
 ## Quickstart

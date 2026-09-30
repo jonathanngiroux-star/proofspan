@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"io"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // DiffSkeleton mirrors the langsmith dry-run plan shape (stable contract).

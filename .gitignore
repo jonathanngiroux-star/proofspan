@@ -2,3 +2,4 @@
 /dist/
 *.sqlite
 *.db
+/proofspan.exe

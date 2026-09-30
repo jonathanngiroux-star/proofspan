@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 func newTestStore(t *testing.T) *Store {

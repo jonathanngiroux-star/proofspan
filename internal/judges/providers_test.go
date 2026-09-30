@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // Providers make the judge engine provider-agnostic: a manifest declares

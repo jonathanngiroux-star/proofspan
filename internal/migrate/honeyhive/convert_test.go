@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 const fixture = `{"eventId":"ev-0001","sessionId":"sess_a","eventName":"search_docs","eventType":"tool","inputs":{"query":"refund policy"},"outputs":{"result":"3 docs"},"startedAt":"2024-09-27T16:00:00.100Z","endedAt":"2024-09-27T16:00:00.450Z"}

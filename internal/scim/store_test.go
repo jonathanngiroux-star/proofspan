@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
 // Store-backed SCIM: users and groups must survive restarts. The in-memory

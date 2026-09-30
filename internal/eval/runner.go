@@ -6,8 +6,8 @@ import (
 	"context"
 	"time"
 
-	"proofspan/internal/assert/wasm"
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/assert/wasm"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // AssertionRegistry is the subset of the WASM registry the runner needs.

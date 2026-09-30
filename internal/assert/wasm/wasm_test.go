@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // The registry test compiles the span-correlation assertion from

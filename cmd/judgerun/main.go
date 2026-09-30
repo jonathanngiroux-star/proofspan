@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"proofspan/internal/judges"
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/judges"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
 // Command judgerun executes pinned judges over one stored trajectory,

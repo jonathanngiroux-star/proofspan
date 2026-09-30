@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // The engine executes a pinned judge over a trajectory. Provider resolution:
@@ -19,7 +19,7 @@ import (
 // model before the call: mismatch = hard error, never a silent grade.
 
 const testManifest = `{
-	"namespace": "proofspan/llm-judge-registry",
+	"namespace": "github.com/jonathanngiroux-star/proofspan/llm-judge-registry",
 	"version": "v1.1.0",
 	"providers": {
 		"test": {"endpoint": "http://placeholder.invalid/v1", "api_key_env": "TEST_JUDGE_KEY"}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // Verdict is one judge outcome over one trajectory.

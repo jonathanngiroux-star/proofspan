@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 const fullFixture = `{"id":"run-0001","name":"search_docs","run_type":"tool","inputs":{"query":"refund policy"},"outputs":{"result":"3 docs returned"},"start_time":"2024-09-27T16:00:00.100Z","end_time":"2024-09-27T16:00:00.450Z","session_id":"trj_a","tags":["prod","web"],"dotted_order":"20240927T160000.100Zrun-0001","execution_order":1,"extra":{"metadata":{"user":"u_42","env":"prod"}}}

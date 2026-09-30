@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
 // storeSchemaSQL is executed against the main store on first use.

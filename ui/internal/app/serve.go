@@ -35,6 +35,10 @@ func StartServe(args []string, extraEnv map[string]string, dir string, onLine fu
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w (is the binary on PATH? set PROOFSPAN_BIN)", bin, err)
 	}
+	// Windows: assign the process to a kill-on-close Job Object (the
+	// platform equivalent of a process group). Best-effort: a failure to
+	// assign degrades Stop() to a direct kill, never breaks serving.
+	_ = postStart(cmd)
 	p := &ServeProcess{cmd: cmd, done: make(chan struct{})}
 	go func() {
 		defer close(p.done)

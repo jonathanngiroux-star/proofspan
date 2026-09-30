@@ -15,10 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"proofspan/internal/fidelity"
-	"proofspan/internal/migrate/honeyhive"
-	"proofspan/internal/migrate/langsmith"
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/fidelity"
+	"github.com/jonathanngiroux-star/proofspan/internal/migrate/honeyhive"
+	"github.com/jonathanngiroux-star/proofspan/internal/migrate/langsmith"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 type summary struct {

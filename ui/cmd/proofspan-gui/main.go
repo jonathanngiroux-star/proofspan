@@ -22,7 +22,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"proofspan/ui/internal/app"
+	"github.com/jonathanngiroux-star/proofspan/ui/internal/app"
 )
 
 func main() {

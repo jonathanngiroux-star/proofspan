@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"proofspan/internal/schema"
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
 // The full HTTP surface runs against the store-backed SCIM provider:

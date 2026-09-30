@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"proofspan/internal/scim"
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/scim"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
 // Server is the local proofspan server.

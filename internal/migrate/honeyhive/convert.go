@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"proofspan/internal/schema"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
 )
 
 // Event mirrors one JSONL line of a HoneyHive run export.

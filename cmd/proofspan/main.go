@@ -13,21 +13,38 @@ import (
 	"strings"
 	"time"
 
-	"proofspan/internal/assert/wasm"
-	"proofspan/internal/corpus"
-	evalpkg "proofspan/internal/eval"
-	"proofspan/internal/judges"
-	"proofspan/internal/migrate/honeyhive"
-	"proofspan/internal/migrate/langsmith"
-	"proofspan/internal/schema"
-	servepkg "proofspan/internal/serve"
-	"proofspan/internal/store"
+	"github.com/jonathanngiroux-star/proofspan/internal/assert/wasm"
+	"github.com/jonathanngiroux-star/proofspan/internal/corpus"
+	evalpkg "github.com/jonathanngiroux-star/proofspan/internal/eval"
+	"github.com/jonathanngiroux-star/proofspan/internal/judges"
+	"github.com/jonathanngiroux-star/proofspan/internal/migrate/honeyhive"
+	"github.com/jonathanngiroux-star/proofspan/internal/migrate/langsmith"
+	"github.com/jonathanngiroux-star/proofspan/internal/schema"
+	servepkg "github.com/jonathanngiroux-star/proofspan/internal/serve"
+	"github.com/jonathanngiroux-star/proofspan/internal/store"
 )
 
-const versionString = "0.1.1"
+const versionString = "0.2.0"
 
 func main() {
+	// Single entry point: `proofspan` (interactive) → TUI, `proofspan desktop`
+	// → GUI, anything else → the CLI.
+	if target, _, err := dispatch(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "proofspan:", err)
+		os.Exit(1)
+	} else if target == uiTUI {
+		if err := launchFrontEnd("tui"); err != nil {
+			fmt.Fprintln(os.Stderr, "proofspan:", err)
+			os.Exit(1)
+		}
+	} else if target == uiGUI {
+		if err := launchFrontEnd("desktop"); err != nil {
+			fmt.Fprintln(os.Stderr, "proofspan:", err)
+			os.Exit(1)
+		}
+	}
 	if len(os.Args) < 2 {
+		// non-interactive bare invocation: show usage (scripts, CI)
 		usage()
 		os.Exit(2)
 	}
@@ -61,7 +78,11 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage: proofspan <command> [args]
+	fmt.Fprint(os.Stderr, `usage: proofspan [command]
+
+no command (interactive terminal): launch the TUI
+  desktop                          launch the GUI
+  tui                              launch the TUI (even when piped)
 
 commands:
   version                                             print binary and schema version
