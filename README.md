@@ -102,15 +102,26 @@ Local HTTP server: `GET /healthz`, `GET /v1/trajectories`, `GET /v1/trajectories
 
 ## GUI
 
-A desktop front-end over the same commands lives in [`gui/`](gui) (separate Go module; Fyne's dependency tree and CGO stay out of the core binary). Four tabs — Analyze, Migrate, Evaluate, Serve — with a streaming output log and status bar. The SCIM token is passed via environment, never command-line arguments.
+A desktop front-end over the same commands lives in [`ui/`](ui) (separate Go module; Fyne's dependency tree and CGO stay out of the core binary). Four tabs — Analyze, Migrate, Evaluate, Serve — with a streaming output log and status bar. The SCIM token is passed via environment, never command-line arguments.
 
 ```sh
 # build (requires a C compiler + OpenGL/X11 headers: xorg-dev libgl1-mesa-dev)
-cd gui && go build -o proofspan-gui .
+cd ui/cmd/proofspan-gui && go build -o proofspan-gui .
 ./proofspan-gui
 ```
 
-The GUI looks for the CLI binary as `proofspan` on `PATH`, or set `PROOFSPAN_BIN=/path/to/proofspan`. Commands run with the database file's directory as working directory, so relative paths (`judges/manifest.json`, `registry/bin`) resolve when everything lives in one folder.
+The GUI looks for the CLI binary as `proofspan` on `PATH`, or set `PROOFSPAN_BIN=/path/to/proofspan`.
+
+## TUI
+
+For terminals, tmux, and SSH sessions: [`ui/cmd/proofspan-tui`](ui/cmd/proofspan-tui) (Bubble Tea, static binary, no CGO). Keys: `1`–`4` switch tabs (Analyze / Migrate / Evaluate / Serve), `enter`/`r` runs the active tab's command, `s` starts/stops the server on the Serve tab, `q` quits (stopping the server first).
+
+```sh
+cd ui/cmd/proofspan-tui && go build -o proofspan-tui .
+./proofspan-tui
+```
+
+Both front-ends detect a repo checkout (a directory containing `judges/` + `registry/`) by walking up from the current directory and pin `--judges`/`--registry` on eval, so commands work from any working directory. Same `PROOFSPAN_BIN` override as the GUI.
 
 ## Trace format (ATF v0.1.1)
 

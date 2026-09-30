@@ -22,7 +22,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
-	"proofspan/gui/internal/app"
+	"proofspan/ui/internal/app"
 )
 
 func main() {
@@ -240,7 +240,7 @@ func (u *ui) runCmd(label string, args []string, extraEnv map[string]string, onD
 	u.setStatus("Running: " + label + "…")
 	u.appendLog(fmt.Sprintf("$ proofspan %s", strings.Join(args, " ")))
 
-	r := &app.Runner{Dir: dbDir(u.currentDB())}
+	r := &app.Runner{Dir: app.DBDir(u.currentDB())}
 	go func() {
 		code, err := r.Run(args, extraEnv, func(line string) { u.appendLog(line) })
 		u.running = false
@@ -275,14 +275,6 @@ func (u *ui) currentDB() string {
 	default:
 		return u.evalDB.Text
 	}
-}
-
-// dbDir extracts the directory part of a db path ("." for bare names).
-func dbDir(dbPath string) string {
-	if i := strings.LastIndexByte(dbPath, '/'); i > 0 {
-		return dbPath[:i]
-	}
-	return "."
 }
 
 func (u *ui) runReport() {
@@ -351,7 +343,7 @@ func (u *ui) startServe() {
 		tokenNote = "PROOFSPAN_SCIM_TOKEN=*** "
 	}
 	u.appendLog(fmt.Sprintf("$ %sproofspan %s", tokenNote, strings.Join(args, " ")))
-	proc, err := app.StartServe(args, env, dbDir(u.serveDB.Text), func(line string) { u.appendLog(line) })
+	proc, err := app.StartServe(args, env, app.DBDir(u.serveDB.Text), func(line string) { u.appendLog(line) })
 	if err != nil {
 		dialog.ShowError(err, u.win)
 		return

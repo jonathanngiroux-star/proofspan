@@ -42,7 +42,7 @@ jobs:
           verb: call
           args: eval --src=.
 
-  gui:
+  ui:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -50,12 +50,15 @@ jobs:
         with:
           go-version: "1.27"
       # Fyne CGO deps — the exact set fyne-io/fyne's own CI installs on
-      # Linux runners (platform_tests.yml), plus xvfb for headless runs.
+      # Linux runners (platform_tests.yml).
       - name: Install Fyne build dependencies
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libwayland-dev libx11-dev libxkbcommon-dev xorg-dev
-      - name: GUI module tests (argv contracts + e2e vs real CLI)
-        working-directory: gui
+      - name: UI module tests (argv contracts + GUI/TUI e2e vs real CLI)
+        working-directory: ui
         run: go test ./internal/app/ -v
-      - name: Build GUI binary
-        working-directory: gui
+      - name: Build GUI binary (Fyne, CGO)
+        working-directory: ui/cmd/proofspan-gui
         run: go build -o proofspan-gui .
+      - name: Build TUI binary (static, no CGO)
+        working-directory: ui/cmd/proofspan-tui
+        run: go build -o proofspan-tui .
