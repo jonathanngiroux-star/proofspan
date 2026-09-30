@@ -49,9 +49,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.27"
-      # Fyne compiles via CGO: system GL/X11/Wayland headers per fyne.io docs
+      # Fyne CGO deps — the exact set fyne-io/fyne's own CI installs on
+      # Linux runners (platform_tests.yml), plus xvfb for headless runs.
       - name: Install Fyne build dependencies
-        run: sudo apt-get update && sudo apt-get install -y xorg-dev libgl1-mesa-dev libwayland-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1-mesa-dev libwayland-dev libx11-dev libxkbcommon-dev xorg-dev
       - name: GUI module tests (argv contracts + e2e vs real CLI)
         working-directory: gui
         run: go test ./internal/app/ -v
