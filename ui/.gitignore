@@ -1,2 +1,5 @@
-proofspan-gui
-proofspan-tui
+# built front-end binaries only (never the source dirs)
+/proofspan-gui
+/proofspan-tui
+cmd/proofspan-gui/proofspan-gui
+cmd/proofspan-tui/proofspan-tui
