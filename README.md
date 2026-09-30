@@ -100,6 +100,18 @@ Local HTTP server: `GET /healthz`, `GET /v1/trajectories`, `GET /v1/trajectories
 - Without `PROOFSPAN_SCIM_TOKEN` SCIM is open — dev mode; acceptable only on localhost.
 - Token comparison is constant-time.
 
+## GUI
+
+A desktop front-end over the same commands lives in [`gui/`](gui) (separate Go module; Fyne's dependency tree and CGO stay out of the core binary). Four tabs — Analyze, Migrate, Evaluate, Serve — with a streaming output log and status bar. The SCIM token is passed via environment, never command-line arguments.
+
+```sh
+# build (requires a C compiler + OpenGL/X11 headers: xorg-dev libgl1-mesa-dev)
+cd gui && go build -o proofspan-gui .
+./proofspan-gui
+```
+
+The GUI looks for the CLI binary as `proofspan` on `PATH`, or set `PROOFSPAN_BIN=/path/to/proofspan`. Commands run with the database file's directory as working directory, so relative paths (`judges/manifest.json`, `registry/bin`) resolve when everything lives in one folder.
+
 ## Trace format (ATF v0.1.1)
 
 Line-delimited JSON. One trajectory header, then spans:

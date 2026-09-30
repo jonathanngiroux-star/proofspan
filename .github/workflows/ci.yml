@@ -41,3 +41,20 @@ jobs:
           version: "0.21.9"
           verb: call
           args: eval --src=.
+
+  gui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      # Fyne compiles via CGO: system GL/X11 headers per fyne.io docs
+      - name: Install Fyne build dependencies
+        run: sudo apt-get update && sudo -S -p '' apt-get install -y xorg-dev libgl1-mesa-dev
+      - name: GUI module tests (argv contracts + e2e vs real CLI)
+        working-directory: gui
+        run: go test ./internal/app/ -v
+      - name: Build GUI binary
+        working-directory: gui
+        run: go build -o proofspan-gui .

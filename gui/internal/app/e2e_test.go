@@ -1,9 +1,10 @@
 package app
 
 import (
-	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,14 +15,15 @@ import (
 // verifies exit codes, streamed output, and the serve lifecycle including a
 // live HTTP probe of the started server.
 //
-// Skips when the CLI binary is not resolvable (CI containers without the
-// built binary) or no DISPLAY is present (irrelevant here — no window is
-// created, only the exec layer).
+// The CLI binary is built fresh into a temp dir (works on CI and locally);
+// skips when Go can't build it.
 func TestGUIEndToEndAgainstRealCLI(t *testing.T) {
-	home := "/run/media/thoth/project-backup/github_top_10/proofspan"
-	bin := home + "/proofspan"
-	if _, err := os.Stat(bin); err != nil {
-		t.Skipf("CLI binary not built at %s — build it first (go build -o proofspan ./cmd/proofspan)", bin)
+	home := repoRoot(t)
+	// build a fresh CLI binary so the e2e runs against current source,
+	// independent of any committed/stale artifact
+	bin := t.TempDir() + "/proofspan"
+	if out, err := exec.Command("go", "build", "-C", home, "-o", bin, "./cmd/proofspan").CombinedOutput(); err != nil {
+		t.Skipf("could not build CLI binary: %v: %s", err, out)
 	}
 	t.Setenv("PROOFSPAN_BIN", bin)
 
@@ -140,11 +142,32 @@ func firstN(xs []string, n int) []string {
 	return xs
 }
 
+// repoRoot walks up from the test's working directory to the directory
+// containing cmd/proofspan — the repo root, wherever it's checked out
+// (local dev machine or CI runner).
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 10; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "cmd", "proofspan")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	t.Fatal("repo root (cmd/proofspan) not found above the test directory")
+	return ""
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
 	return b
 }
-
-var _ = fmt.Sprintf
