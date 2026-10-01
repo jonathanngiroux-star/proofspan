@@ -2,6 +2,9 @@ package judges
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,7 +21,16 @@ import (
 // The judge's model_fingerprint is resolved against the provider's reported
 // model before the call: mismatch = hard error, never a silent grade.
 
-const testManifest = `{
+// sha256hex hashes s and returns the hex digest — the exact rule
+// docs/judges.md pins for the @sha256: fingerprint segment.
+func sha256hex(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
+}
+
+// testManifest pins "conciseness" to the card its fake server serves, so
+// the engine's hash check has a matching target.
+var testManifest = fmt.Sprintf(`{
 	"namespace": "github.com/jonathanngiroux-star/proofspan/llm-judge-registry",
 	"version": "v1.1.0",
 	"providers": {
@@ -26,9 +38,9 @@ const testManifest = `{
 	},
 	"judges": [
 		{"id": "factual-consistency", "model_fingerprint": "builtin:factual-consistency@v1", "description": "deterministic reference judge"},
-		{"id": "conciseness", "model_fingerprint": "nvidia/llama-3.1-8b-instruct@sha256:abc123", "description": "HTTP judge", "provider": "test"}
+		{"id": "conciseness", "model_fingerprint": "nvidia/llama-3.1-8b-instruct@sha256:%s", "description": "HTTP judge", "provider": "test"}
 	]
-}`
+}`, sha256hex(`{"id":"nvidia/llama-3.1-8b-instruct"}`))
 
 func testJudgeSetup(t *testing.T) (*Manifest, []schema.Span) {
 	t.Helper()
@@ -133,6 +145,31 @@ func TestEngineHTTPJudgeVerifiesFingerprint(t *testing.T) {
 	}
 }
 
+// TestEngineHTTPJudgeVerifiesCardHash pins the real contract (docs/judges.md
+// rule 1): the @sha256: segment hashes the EXACT /v1/models/<id> response
+// body. A provider that silently re-serves a changed card under the same
+// model id must be refused — the hash is the pin, not the id.
+func TestEngineHTTPJudgeVerifiesCardHash(t *testing.T) {
+	m, spans := testJudgeSetup(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models/nvidia/llama-3.1-8b-instruct" {
+			// same id, but a changed card (e.g. weights silently updated)
+			w.Write([]byte(`{"id":"nvidia/llama-3.1-8b-instruct","created":999}`))
+			return
+		}
+		w.Write([]byte(`{"choices":[{"message":{"content":"PASS"}}]}`))
+	}))
+	defer srv.Close()
+	eng := NewEngine(m).WithHTTPClient(srv.Client()).WithAPIKey("test-key").WithEndpoint(srv.URL + "/v1")
+	_, err := eng.Judge(context.Background(), "conciseness", "t1", spans)
+	if err == nil {
+		t.Fatal("changed model card must be refused — the hash is the pin")
+	}
+	if !strings.Contains(err.Error(), "fingerprint") {
+		t.Errorf("error must name the fingerprint mismatch: %v", err)
+	}
+}
+
 func TestEngineHTTPJudgePassesOnMatch(t *testing.T) {
 	m, spans := testJudgeSetup(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -151,7 +188,7 @@ func TestEngineHTTPJudgePassesOnMatch(t *testing.T) {
 	if res.Status != "fail" {
 		t.Errorf("judge said FAIL → must be fail, got %s (%s)", res.Status, res.Detail)
 	}
-	if res.JudgeFingerprint != "nvidia/llama-3.1-8b-instruct@sha256:abc123" {
+	if res.JudgeFingerprint != "nvidia/llama-3.1-8b-instruct@sha256:"+sha256hex(`{"id":"nvidia/llama-3.1-8b-instruct"}`) {
 		t.Errorf("fingerprint must round-trip: %s", res.JudgeFingerprint)
 	}
 }

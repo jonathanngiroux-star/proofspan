@@ -82,6 +82,36 @@ func TestCreateAndGetUser(t *testing.T) {
 	}
 }
 
+// A malformed-but-well-formed JSON body (userName present but not a
+// string) must be a 400, NEVER a panic: net/http recovers panics by
+// killing the connection, so a hostile or sloppy IdP client would
+// wedge every SCIM sync.
+func TestCreateUserNonStringUserNameIs400NotPanic(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp, err := http.Post(srv.URL+"/scim/v2/Users", "application/scim+json",
+		strings.NewReader(`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":123}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("non-string userName: got %d, want 400 (no panic)", resp.StatusCode)
+	}
+}
+
+func TestCreateGroupNonStringDisplayNameIs400NotPanic(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resp, err := http.Post(srv.URL+"/scim/v2/Groups", "application/scim+json",
+		strings.NewReader(`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:Group"],"displayName":["x"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 400 {
+		t.Fatalf("non-string displayName: got %d, want 400 (no panic)", resp.StatusCode)
+	}
+}
+
 func TestListUsersPaginated(t *testing.T) {
 	srv, _ := newTestServer(t)
 	for _, n := range []string{"a@x", "b@x", "c@x"} {
@@ -101,6 +131,30 @@ func TestListUsersPaginated(t *testing.T) {
 	}
 	if list["totalResults"] != float64(3) {
 		t.Errorf("totalResults = %v, want 3", list["totalResults"])
+	}
+}
+
+// RFC 7644 §3.4.2.4: count=0 means "no resource results returned"
+// (totalResults still set). The in-memory path must match the
+// store-backed path (LIMIT 0 → zero rows).
+func TestListUsersCountZeroReturnsNoResources(t *testing.T) {
+	srv, _ := newTestServer(t)
+	for _, n := range []string{"a@x", "b@x"} {
+		http.Post(srv.URL+"/scim/v2/Users", "application/scim+json",
+			strings.NewReader(`{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"`+n+`"}`))
+	}
+	resp, err := http.Get(srv.URL + "/scim/v2/Users?count=0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var list map[string]any
+	json.NewDecoder(resp.Body).Decode(&list)
+	if list["totalResults"] != float64(2) {
+		t.Errorf("totalResults = %v, want 2", list["totalResults"])
+	}
+	if resources, _ := list["Resources"].([]any); len(resources) != 0 {
+		t.Errorf("count=0 must return no resources, got %v", resources)
 	}
 }
 

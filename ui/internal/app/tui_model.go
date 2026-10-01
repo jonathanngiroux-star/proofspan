@@ -10,7 +10,7 @@ import (
 // Elm-style: Update(Msg) mutates state; the renderer reads it each frame.
 // All commands are the same argv the GUI/CLI produce (shared builders).
 type TUIModel struct {
-	tab     Tab
+	tab      Tab
 	finished bool
 
 	// per-tab config state
@@ -32,10 +32,10 @@ type TUIModel struct {
 	resourcesDir string
 
 	// seams (nil = real behavior in the TUI binary)
-	fastForward     func(id int) Msg
-	runHook         func(Cmd)
-	serveStartHook  func(ServeConfig) error
-	serveStopHook   func() error
+	fastForward    func(id int) Msg
+	runHook        func(Cmd)
+	serveStartHook func(ServeConfig) error
+	serveStopHook  func() error
 }
 
 // Tab identifies the active pane.
@@ -97,8 +97,8 @@ type Cmd struct {
 // NewTUIModel returns the initial state.
 func NewTUIModel() *TUIModel {
 	return &TUIModel{
-		tab:       TabAnalyze,
-		status:    "Ready. Tab: 1-Analyze 2-Migrate 3-Evaluate 4-Serve. q quits.",
+		tab:        TabAnalyze,
+		status:     "Ready. Tab: 1-Analyze 2-Migrate 3-Evaluate 4-Serve. q quits.",
 		migrateCfg: MigrateConfig{Source: "langsmith", DB: "proofspan.sqlite"},
 		reportCfg:  ReportConfig{Source: "langsmith"},
 		evalCfg:    EvalConfig{DB: "proofspan.sqlite"},
@@ -263,12 +263,12 @@ func (m *TUIModel) ServeCommand() ([]string, map[string]string, error) {
 
 // --- read accessors for the renderer and tests ---
 
-func (m *TUIModel) ActiveTab() Tab     { return m.tab }
-func (m *TUIModel) Busy() bool          { return m.busy }
-func (m *TUIModel) Finished() bool      { return m.finished }
-func (m *TUIModel) Status() string      { return m.status }
-func (m *TUIModel) LogLines() []string { return m.log }
-func (m *TUIModel) ServeRunning() bool  { return m.serveUp }
+func (m *TUIModel) ActiveTab() Tab            { return m.tab }
+func (m *TUIModel) Busy() bool                { return m.busy }
+func (m *TUIModel) Finished() bool            { return m.finished }
+func (m *TUIModel) Status() string            { return m.status }
+func (m *TUIModel) LogLines() []string        { return m.log }
+func (m *TUIModel) ServeRunning() bool        { return m.serveUp }
 func (m *TUIModel) MigrateCfg() MigrateConfig { return m.migrateCfg }
 func (m *TUIModel) EvalCfg() EvalConfig       { return m.evalCfg }
 func (m *TUIModel) ReportCfg() ReportConfig   { return m.reportCfg }

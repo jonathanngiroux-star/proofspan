@@ -89,20 +89,20 @@ func (p *Provider) authMiddleware(next http.Handler) http.Handler {
 
 func (p *Provider) serviceProviderConfig(w http.ResponseWriter, r *http.Request) {
 	writeSCIM(w, http.StatusOK, map[string]any{
-		"schemas": []string{"urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"},
+		"schemas":          []string{"urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"},
 		"documentationUri": "https://proofspan.dev/docs/scim",
-		"patch": map[string]any{"supported": false},
-		"bulk": map[string]any{"supported": false, "maxOperations": 0, "maxPayloadSize": 0},
-		"filter": map[string]any{"supported": false, "maxResults": 0},
-		"changePassword": map[string]any{"supported": false},
-		"sort": map[string]any{"supported": false},
-		"etag": map[string]any{"supported": false},
+		"patch":            map[string]any{"supported": false},
+		"bulk":             map[string]any{"supported": false, "maxOperations": 0, "maxPayloadSize": 0},
+		"filter":           map[string]any{"supported": false, "maxResults": 0},
+		"changePassword":   map[string]any{"supported": false},
+		"sort":             map[string]any{"supported": false},
+		"etag":             map[string]any{"supported": false},
 		"authenticationSchemes": []map[string]any{{
-			"name": "Bearer Token",
+			"name":        "Bearer Token",
 			"description": "Bearer token set via PROOFSPAN_SCIM_TOKEN; endpoints return 401 without it. OIDC in v0.2.",
-			"specUri": "https://datatracker.ietf.org/doc/html/rfc6750",
-			"type": "oauthbearertoken",
-			"primary": true,
+			"specUri":     "https://datatracker.ietf.org/doc/html/rfc6750",
+			"type":        "oauthbearertoken",
+			"primary":     true,
 		}},
 	})
 }
@@ -156,8 +156,11 @@ func (p *Provider) createUser(w http.ResponseWriter, r *http.Request) {
 	if body["schemas"] == nil {
 		body["schemas"] = []string{schemaUser}
 	}
-	if body["userName"] == nil || body["userName"].(string) == "" {
-		scimError(w, http.StatusBadRequest, "userName required")
+	// type assertion must never panic: net/http recovers panics by killing
+	// the connection, wedging an IdP's whole sync run. Bad type = 400.
+	userName, ok := body["userName"].(string)
+	if !ok || userName == "" {
+		scimError(w, http.StatusBadRequest, "userName required (string)")
 		return
 	}
 	if p.persist != nil {
@@ -175,9 +178,9 @@ func (p *Provider) createUser(w http.ResponseWriter, r *http.Request) {
 	body["id"] = id
 	body["meta"] = map[string]any{
 		"resourceType": "User",
-		"created": time.Now().UTC().Format(time.RFC3339),
+		"created":      time.Now().UTC().Format(time.RFC3339),
 		"lastModified": time.Now().UTC().Format(time.RFC3339),
-		"location": "/scim/v2/Users/" + id,
+		"location":     "/scim/v2/Users/" + id,
 	}
 	p.users[id] = body
 	p.mu.Unlock()
@@ -214,7 +217,11 @@ func (p *Provider) listUsers(w http.ResponseWriter, r *http.Request) {
 	} else if startIndex > len(ids) {
 		ids = nil
 	}
-	if count > 0 && len(ids) > count {
+	// RFC 7644 §3.4.2.4: count=0 means "no resources returned"
+	// (totalResults stays set) — matching the store-backed path.
+	if count == 0 {
+		ids = nil
+	} else if len(ids) > count {
 		ids = ids[:count]
 	}
 	resources := make([]map[string]any, 0, len(ids))
@@ -317,8 +324,10 @@ func (p *Provider) createGroup(w http.ResponseWriter, r *http.Request) {
 	if body["schemas"] == nil {
 		body["schemas"] = []string{schemaGroup}
 	}
-	if body["displayName"] == nil || body["displayName"].(string) == "" {
-		scimError(w, http.StatusBadRequest, "displayName required")
+	// type assertion must never panic (see createUser): bad type = 400
+	displayName, ok := body["displayName"].(string)
+	if !ok || displayName == "" {
+		scimError(w, http.StatusBadRequest, "displayName required (string)")
 		return
 	}
 	if p.persist != nil {
@@ -335,9 +344,9 @@ func (p *Provider) createGroup(w http.ResponseWriter, r *http.Request) {
 	body["id"] = gid
 	body["meta"] = map[string]any{
 		"resourceType": "Group",
-		"created": time.Now().UTC().Format(time.RFC3339),
+		"created":      time.Now().UTC().Format(time.RFC3339),
 		"lastModified": time.Now().UTC().Format(time.RFC3339),
-		"location": "/scim/v2/Groups/" + gid,
+		"location":     "/scim/v2/Groups/" + gid,
 	}
 	p.groups[gid] = body
 	p.mu.Unlock()

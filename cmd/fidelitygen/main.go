@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/jonathanngiroux-star/proofspan/internal/fidelity"
@@ -107,19 +108,29 @@ func gate(r *fidelity.ParityReport, mad, cost float64) bool {
 }
 
 func flattenLS(res *langsmith.Result) []schema.Span {
+	// sort by span id: SpansByTrajectory is a map, and CostDrift sums
+	// float64s — a varying order churns summary.json's cost_drift on
+	// every regen with last-bit noise.
 	var out []schema.Span
 	for _, spans := range res.SpansByTrajectory {
 		out = append(out, spans...)
 	}
+	sortSpansByID(out)
 	return out
 }
 
 func flattenHH(res *honeyhive.Result) []schema.Span {
+	// same determinism rule as flattenLS
 	var out []schema.Span
 	for _, spans := range res.SpansByTrajectory {
 		out = append(out, spans...)
 	}
+	sortSpansByID(out)
 	return out
+}
+
+func sortSpansByID(spans []schema.Span) {
+	sort.Slice(spans, func(i, j int) bool { return spans[i].SpanID < spans[j].SpanID })
 }
 
 func writeReport(docsDir, name string, r *fidelity.ParityReport, mad, cost float64) error {

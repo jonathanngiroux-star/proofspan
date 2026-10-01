@@ -59,11 +59,13 @@ go build -C ui/cmd/proofspan-gui -o proofspan-gui .   # needs a C compiler + Ope
 
 # 3. Ingest into SQLite:
 ./proofspan migrate --from=langsmith --db=proofspan.sqlite traces.jsonl
-# migrated 400 trajectories, 10000 spans into proofspan.sqlite
+# migrated 400 trajectories, 10000 spans into proofspan.sqlite   ← on stderr
 
 # 4. Run the eval gate over everything ingested:
 ./proofspan eval --db=proofspan.sqlite
 # eval: 400/400 trajectories pass   (exit 0; any failure exits 1)
+#                                     ↑ summary on stderr; stdout is the
+#                                       machine-readable JSON report
 ```
 
 ## Commands

@@ -14,8 +14,8 @@ import (
 	"strings"
 	"sync"
 
-	fyneapp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2"
+	fyneapp "fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"

@@ -9,16 +9,16 @@ import (
 
 // DiffSkeleton mirrors the langsmith dry-run plan shape (stable contract).
 type DiffSkeleton struct {
-	DryRun        bool              `json:"dry_run"`
-	Source        string            `json:"source"`
-	TargetVersion string            `json:"target_version"`
-	InputFile     string            `json:"input_file"`
-	Trajectories  int               `json:"trajectories"`
-	RunsRead      int               `json:"runs_read"`
-	SpansPlanned  int               `json:"spans_planned"`
-	FieldMappings []FieldMapping    `json:"field_mappings"`
-	DroppedFields []DroppedField    `json:"dropped_fields"`
-	SampleSpan    *schema.Span      `json:"sample_span,omitempty"`
+	DryRun        bool           `json:"dry_run"`
+	Source        string         `json:"source"`
+	TargetVersion string         `json:"target_version"`
+	InputFile     string         `json:"input_file"`
+	Trajectories  int            `json:"trajectories"`
+	RunsRead      int            `json:"runs_read"`
+	SpansPlanned  int            `json:"spans_planned"`
+	FieldMappings []FieldMapping `json:"field_mappings"`
+	DroppedFields []DroppedField `json:"dropped_fields"`
+	SampleSpan    *schema.Span   `json:"sample_span,omitempty"`
 }
 
 // FieldMapping documents one field transformation.

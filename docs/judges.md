@@ -31,7 +31,7 @@
      | python3 -c "import sys,hashlib; print('z-ai/glm-5.3@sha256:'+hashlib.sha256(sys.stdin.read().encode()).hexdigest())"
    ```
 2. **UNPINNED refuses to execute.** A placeholder fingerprint is a hard error at judge-run time, never a silent grade.
-3. **Served model must match the pin.** Before any HTTP judge call, the engine fetches the provider's model card and compares the served `id` against the pinned model segment. Mismatch = refusal, no grading happens.
+3. **Served model must match the pin.** Before any HTTP judge call, the engine fetches the provider's model card (`GET /v1/models/<model>`) and compares **both** segments: the card's `id` against the pinned model id, and the sha256 of the exact card body against the pinned `@sha256:` hash. Either mismatch = refusal, no grading happens. A provider that silently re-serves a changed card under the same model id is caught — the hash is the pin, not the name.
 4. **Builtin judges are deterministic.** `builtin:<id>@<v>` fingerprints run a reference implementation in-process — offline, CI-safe, no drift possible.
 5. **Keys come from the environment.** The manifest stores only the env var *name*. One-off overrides: `--judge-api-key` / `--judge-endpoint` on `proofspan eval`.
 
@@ -66,7 +66,7 @@ export NVIDIA_API_KEY=nvapi-...
 ./proofspan eval --db=ps.sqlite --trajectory=trj_00001 --judges-run=factual-consistency,semantic-consistency
 ```
 
-Verdicts print to stdout and persist to the `eval_runs` table with the exact fingerprint used — audit-ready.
+Verdicts print to stderr (stdout stays machine-readable for pipes) and persist to the `eval_runs` table with the exact fingerprint used — audit-ready.
 
 ## Fail-closed semantics
 

@@ -32,10 +32,10 @@ type Run struct {
 	DottedOrder    string         `json:"dotted_order"`
 	ExecutionOrder int            `json:"execution_order"`
 	Extra          struct {
-		Metadata        map[string]string `json:"metadata"`
-		ModelName       string            `json:"model_name"`
+		Metadata         map[string]string `json:"metadata"`
+		ModelName        string            `json:"model_name"`
 		InvocationParams map[string]any    `json:"invocation_params"`
-		TokenUsage *struct {
+		TokenUsage       *struct {
 			PromptTokens     int64 `json:"prompt_tokens"`
 			CompletionTokens int64 `json:"completion_tokens"`
 		} `json:"token_usage"`

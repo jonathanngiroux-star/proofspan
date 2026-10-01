@@ -22,16 +22,21 @@ func StartServe(args []string, extraEnv map[string]string, dir string, onLine fu
 	bin := ResolveBinary()
 	cmd := exec.Command(bin, args...)
 	cmd.Env = append(os.Environ(), envSlice(extraEnv)...)
-	cmd.Stderr = cmd.Stdout
 	if dir != "" {
 		cmd.Dir = dir
 	}
 	// New process group → Stop() can kill the whole tree.
 	cmd.SysProcAttr = sysProcAttrForGroup()
+	// StdoutPipe must be set up BEFORE merging stderr into stdout:
+	// assigning cmd.Stderr = cmd.Stdout while Stdout is still nil points
+	// stderr at /dev/null, silently discarding the server's status and
+	// error output. After StdoutPipe(), Stdout is the pipe's *os.File and
+	// exec dups the same fd for both — one merged stream, like Runner.Run.
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
+	cmd.Stderr = cmd.Stdout
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start %s: %w (is the binary on PATH? set PROOFSPAN_BIN)", bin, err)
 	}

@@ -19,17 +19,17 @@ import (
 
 // Event mirrors one JSONL line of a HoneyHive run export.
 type Event struct {
-	EventID   string         `json:"eventId"`
-	SessionID string         `json:"sessionId"`
-	ParentID  string         `json:"parentId"`
-	EventName string         `json:"eventName"`
-	EventType string         `json:"eventType"` // model|tool|retriever|agent|chain
-	Inputs    map[string]any `json:"inputs"`
-	Outputs   map[string]any `json:"outputs"`
-	StartedAt string         `json:"startedAt"` // RFC 3339
-	EndedAt   string         `json:"endedAt"`
-	Model     string         `json:"model"`
-	Error     string         `json:"error"`
+	EventID    string         `json:"eventId"`
+	SessionID  string         `json:"sessionId"`
+	ParentID   string         `json:"parentId"`
+	EventName  string         `json:"eventName"`
+	EventType  string         `json:"eventType"` // model|tool|retriever|agent|chain
+	Inputs     map[string]any `json:"inputs"`
+	Outputs    map[string]any `json:"outputs"`
+	StartedAt  string         `json:"startedAt"` // RFC 3339
+	EndedAt    string         `json:"endedAt"`
+	Model      string         `json:"model"`
+	Error      string         `json:"error"`
 	TokenUsage *struct {
 		PromptTokens     int64 `json:"promptTokens"`
 		CompletionTokens int64 `json:"completionTokens"`

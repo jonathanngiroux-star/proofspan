@@ -136,7 +136,6 @@ func (w wrapper) startServe() tea.Cmd {
 	return nil
 }
 
-
 func (w wrapper) View() string {
 	m := w.m
 	var b strings.Builder

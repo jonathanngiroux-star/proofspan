@@ -2,6 +2,8 @@ package judges
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -17,6 +19,16 @@ import (
 // the API key), judges reference a provider by name, and the engine
 // resolves endpoint+key at run time. Local endpoints (vLLM, ollama) may
 // omit the key env entirely — no auth.
+
+// cardBody is the exact /v1/models/<id> body fakeJudgeServer serves.
+func cardBody(model string) string { return `{"id":"` + model + `"}` }
+
+// pin is the fingerprint the engine must accept for cardBody(model):
+// <model>@sha256:<sha256 hex of the exact card body> (docs/judges.md rule 1).
+func pin(model string) string {
+	sum := sha256.Sum256([]byte(cardBody(model)))
+	return model + "@sha256:" + hex.EncodeToString(sum[:])
+}
 
 func writeProviderManifest(t *testing.T, body string) *Manifest {
 	t.Helper()
@@ -143,7 +155,7 @@ func TestEngineResolvesLocalProviderWithoutKey(t *testing.T) {
 	m := writeProviderManifest(t, `{
 	  "namespace":"n/x","version":"v1.2.0",
 	  "providers":{"local":{"endpoint":"`+srv.URL+`/v1"}},
-	  "judges":[{"id":"lj","model_fingerprint":"`+model+`@sha256:abc","provider":"local"}]
+	  "judges":[{"id":"lj","model_fingerprint":"`+pin(model)+`","provider":"local"}]
 	}`)
 	eng := NewEngine(m) // no WithAPIKey: local provider declares no env var
 	v, err := eng.Judge(context.Background(), "lj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})
@@ -165,7 +177,7 @@ func TestEngineProviderKeyFromEnvVar(t *testing.T) {
 	m := writeProviderManifest(t, `{
 	  "namespace":"n/x","version":"v1.2.0",
 	  "providers":{"custom":{"endpoint":"`+srv.URL+`/v1","api_key_env":"TEST_PROOFSPAN_PROVIDER_KEY"}},
-	  "judges":[{"id":"cj","model_fingerprint":"`+model+`@sha256:abc","provider":"custom"}]
+	  "judges":[{"id":"cj","model_fingerprint":"`+pin(model)+`","provider":"custom"}]
 	}`)
 	eng := NewEngine(m)
 	v, err := eng.Judge(context.Background(), "cj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})
@@ -187,7 +199,7 @@ func TestEngineProviderMissingKeyNamesEnvVar(t *testing.T) {
 	m := writeProviderManifest(t, `{
 	  "namespace":"n/x","version":"v1.2.0",
 	  "providers":{"needskey":{"endpoint":"`+srv.URL+`/v1","api_key_env":"TEST_PROOFSPAN_MISSING_KEY"}},
-	  "judges":[{"id":"nj","model_fingerprint":"`+model+`@sha256:abc","provider":"needskey"}]
+	  "judges":[{"id":"nj","model_fingerprint":"`+pin(model)+`","provider":"needskey"}]
 	}`)
 	eng := NewEngine(m)
 	_, err := eng.Judge(context.Background(), "nj", "t1", nil)
@@ -206,7 +218,7 @@ func TestEngineEndpointOverrideWins(t *testing.T) {
 	m := writeProviderManifest(t, `{
 	  "namespace":"n/x","version":"v1.2.0",
 	  "providers":{"p":{"endpoint":"https://placeholder.invalid/v1"}},
-	  "judges":[{"id":"oj","model_fingerprint":"`+model+`@sha256:abc","provider":"p"}]
+	  "judges":[{"id":"oj","model_fingerprint":"`+pin(model)+`","provider":"p"}]
 	}`)
 	eng := NewEngine(m).WithEndpoint(srv.URL + "/v1")
 	v, err := eng.Judge(context.Background(), "oj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})
@@ -225,7 +237,7 @@ func TestEngineAPIKeyOverrideWins(t *testing.T) {
 	m := writeProviderManifest(t, `{
 	  "namespace":"n/x","version":"v1.2.0",
 	  "providers":{"p":{"endpoint":"`+srv.URL+`/v1","api_key_env":"TEST_PROOFSPAN_OVERRIDE_KEY"}},
-	  "judges":[{"id":"okj","model_fingerprint":"`+model+`@sha256:abc","provider":"p"}]
+	  "judges":[{"id":"okj","model_fingerprint":"`+pin(model)+`","provider":"p"}]
 	}`)
 	eng := NewEngine(m).WithAPIKey("from-flag")
 	v, err := eng.Judge(context.Background(), "okj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})
@@ -240,6 +252,31 @@ func TestEngineAPIKeyOverrideWins(t *testing.T) {
 	}
 }
 
+// TestEngineBearerPrefixedKeyNormalized: an env var holding "Bearer <key>"
+// (the way provider docs show it — common copy-paste) must be sent as
+// exactly one Bearer prefix, never "Bearer Bearer <key>".
+func TestEngineBearerPrefixedKeyNormalized(t *testing.T) {
+	const model = "bearer-prefix-model"
+	srv, lastAuth := fakeJudgeServer(t, model)
+	t.Setenv("TEST_PROOFSPAN_BEARER_KEY", "Bearer env-secret-123")
+	m := writeProviderManifest(t, `{
+	  "namespace":"n/x","version":"v1.2.0",
+	  "providers":{"p":{"endpoint":"`+srv.URL+`/v1","api_key_env":"TEST_PROOFSPAN_BEARER_KEY"}},
+	  "judges":[{"id":"bj","model_fingerprint":"`+pin(model)+`","provider":"p"}]
+	}`)
+	eng := NewEngine(m)
+	v, err := eng.Judge(context.Background(), "bj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.Status != "pass" {
+		t.Fatalf("judge must run, got %s: %s", v.Status, v.Detail)
+	}
+	if *lastAuth != "Bearer env-secret-123" {
+		t.Errorf("Bearer-prefixed key must normalize to a single prefix, got %q", *lastAuth)
+	}
+}
+
 // TestEngineEndpointOverrideKeepsEnvKey is a regression test: an endpoint
 // override must NOT disable the provider's api_key_env lookup. Caught by
 // e2e against a fake provider (env key silently not sent).
@@ -250,7 +287,7 @@ func TestEngineEndpointOverrideKeepsEnvKey(t *testing.T) {
 	m := writeProviderManifest(t, `{
 	  "namespace":"n/x","version":"v1.2.0",
 	  "providers":{"p":{"endpoint":"https://placeholder.invalid/v1","api_key_env":"TEST_PROOFSPAN_ENV_KEY_2"}},
-	  "judges":[{"id":"ekj","model_fingerprint":"`+model+`@sha256:abc","provider":"p"}]
+	  "judges":[{"id":"ekj","model_fingerprint":"`+pin(model)+`","provider":"p"}]
 	}`)
 	eng := NewEngine(m).WithEndpoint(srv.URL + "/v1")
 	v, err := eng.Judge(context.Background(), "ekj", "t1", []schema.Span{{SpanID: "s1", Kind: "llm", Output: `{"a":"b"}`}})

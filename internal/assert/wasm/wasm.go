@@ -90,7 +90,7 @@ func (r *Registry) LoadDir(dir string) error {
 			continue
 		}
 		id, version, err := parseName(name[:len(name)-5])
-	 if err != nil {
+		if err != nil {
 			return err
 		}
 		if err := r.Register(id, version, filepath.Join(dir, name)); err != nil {

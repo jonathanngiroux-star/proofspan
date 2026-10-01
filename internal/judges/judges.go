@@ -13,10 +13,10 @@ import (
 
 // Manifest is the judge registry file (judges/manifest.json).
 type Manifest struct {
-	Namespace string             `json:"namespace"`
-	Version   string             `json:"version"`
+	Namespace string              `json:"namespace"`
+	Version   string              `json:"version"`
 	Providers map[string]Provider `json:"providers,omitempty"`
-	Judges    []Judge            `json:"judges"`
+	Judges    []Judge             `json:"judges"`
 }
 
 // Provider is a user-declared OpenAI-compatible endpoint. api_key_env, when

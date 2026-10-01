@@ -41,7 +41,7 @@ func assignToJob(cmd *exec.Cmd) error {
 
 	type ioCounters struct {
 		ReadOperationCount, WriteOperationCount, OtherOperationCount uint64
-		ReadTransferCount, WriteTransferCount, OtherTransferCount   uint64
+		ReadTransferCount, WriteTransferCount, OtherTransferCount    uint64
 	}
 	type basicLimit struct {
 		PerProcessUserTimeLimit int64
@@ -56,7 +56,7 @@ func assignToJob(cmd *exec.Cmd) error {
 	}
 	type extendedLimit struct {
 		BasicLimitInformation basicLimit
-		IoInfo                 ioCounters
+		IoInfo                ioCounters
 		ProcessMemoryLimit    uintptr
 		JobMemoryLimit        uintptr
 		PeakProcessMemoryUsed uintptr

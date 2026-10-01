@@ -14,8 +14,8 @@ import (
 
 // Result is a converted corpus: trajectories with their spans.
 type Result struct {
-	Trajectories       []schema.Trajectory
-	SpansByTrajectory  map[string][]schema.Span
+	Trajectories      []schema.Trajectory
+	SpansByTrajectory map[string][]schema.Span
 }
 
 // Convert reads a LangSmith run-export JSONL stream and converts it to

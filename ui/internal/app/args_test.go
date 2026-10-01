@@ -70,7 +70,7 @@ func TestEvalArgs(t *testing.T) {
 
 	got, err = EvalArgs(EvalConfig{
 		DB: "ps.sqlite", Trajectory: "trj_00001",
-		JudgesRun: "factual-consistency,semantic-consistency",
+		JudgesRun:     "factual-consistency,semantic-consistency",
 		JudgeEndpoint: "http://localhost:8000/v1", JudgeAPIKey: "sk-x",
 	})
 	if err != nil {

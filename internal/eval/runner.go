@@ -23,8 +23,8 @@ type pin struct {
 
 // Runner evaluates trajectories against pinned assertions.
 type Runner struct {
-	reg   AssertionRegistry
-	pins  []pin
+	reg  AssertionRegistry
+	pins []pin
 }
 
 // NewRunner wires a registry; pin assertions via Pinned().

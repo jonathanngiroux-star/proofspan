@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
@@ -123,15 +125,59 @@ func TestGUIEndToEndAgainstRealCLI(t *testing.T) {
 	if resp.StatusCode != 401 {
 		t.Errorf("SCIM without token: got %d want 401", resp.StatusCode)
 	}
-	resp, err = http.Get("http://127.0.0.1:7455/scim/v2/Users")
-	_ = resp
-	_ = err
+	// correct token → 200 (the path an IdP actually takes)
+	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:7455/scim/v2/Users", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer gui-test-token")
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != 200 {
+		t.Errorf("SCIM with correct token: got %d want 200", resp2.StatusCode)
+	}
 	if err := proc.Stop(); err != nil {
 		t.Fatalf("serve stop: %v", err)
 	}
 	time.Sleep(300 * time.Millisecond)
 	if _, err := http.Get("http://127.0.0.1:7455/healthz"); err == nil {
 		t.Error("server still answering after Stop()")
+	}
+}
+
+// TestEvalStdoutIsPureJSON pins the CLI stdout contract: machine-readable
+// JSON is the ONLY thing on stdout (jq-consumable); human status lines
+// ("eval: 400/400 trajectories pass", per-judge verdicts) go to stderr.
+func TestEvalStdoutIsPureJSON(t *testing.T) {
+	home := repoRoot(t)
+	bin := t.TempDir() + "/proofspan"
+	if out, err := exec.Command("go", "build", "-C", home, "-o", bin, "./cmd/proofspan").CombinedOutput(); err != nil {
+		t.Skipf("could not build CLI binary: %v: %s", err, out)
+	}
+	db := t.TempDir() + "/stdout.sqlite"
+
+	migrate := exec.Command(bin, "migrate", "--from=langsmith", "--db="+db, home+"/testdata/corpus/langsmith/corpus.jsonl")
+	if out, err := migrate.CombinedOutput(); err != nil {
+		t.Fatalf("migrate: %v: %s", err, out)
+	}
+
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command(bin, "eval", "--db="+db)
+	cmd.Dir = home // repo-relative defaults: judges/manifest.json, registry/bin
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("eval: %v (stderr: %s)", err, stderr.String())
+	}
+	var reports []any
+	if err := json.Unmarshal(stdout.Bytes(), &reports); err != nil {
+		t.Errorf("stdout must be pure JSON (jq-consumable), got decode error %v; stdout head: %q", err, stdout.String()[:min(80, stdout.Len())])
+	}
+	if !strings.Contains(stderr.String(), "eval: 400/400 trajectories pass") {
+		t.Errorf("human summary line belongs on stderr; stderr = %q", stderr.String())
 	}
 }
 

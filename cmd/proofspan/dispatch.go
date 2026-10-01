@@ -18,20 +18,15 @@ const (
 	uiGUI
 )
 
-// knownCommands are the CLI subcommands — anything in this list (or any
-// unrecognized word) falls through to the normal CLI. Only `desktop` and
-// `tui` are dispatcher words.
-var knownCommands = map[string]bool{
-	"version": true, "migrate": true, "eval": true,
-	"report": true, "serve": true,
-}
-
 // dispatch decides what a proofspan invocation runs:
 //   - no args + interactive terminal → TUI (the "type proofspan" experience)
 //   - no args + NOT interactive       → CLI usage (scripts, CI; never hang)
 //   - "desktop"                        → GUI
 //   - "tui"                            → TUI even over a pipe
 //   - anything else                    → CLI
+//
+// Every non-dispatcher word (known or unknown) falls through to the CLI:
+// recognized commands run, unknown words get the CLI's usage error.
 func dispatch(argv []string) (uiTarget, string, error) {
 	if len(argv) == 0 {
 		if isInteractive(os.Stdin) {

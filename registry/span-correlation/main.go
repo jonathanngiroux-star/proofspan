@@ -5,9 +5,9 @@
 //   - a child span must not start before its parent ends (chain order)
 //   - an empty trajectory is trivially correlated
 //
-// Contract: alloc(size) int32 returns a scratch pointer into the module's
+// Contract: alloc(size) returns a scratch pointer into the module's
 // linear-memory arena; the host writes the payload there, then calls
-// assert(ptr, len) int32; 0 = pass, 1 = fail, 2 = error.
+// assert(ptr, len); 0 = pass, 1 = fail, 2 = error.
 // Payload: JSON array of ATF v0.1.1 spans (subset of fields read).
 //
 // Build: GOOS=wasip1 GOARCH=wasm go build -o span-correlation@1.0.0.wasm .
@@ -32,18 +32,24 @@ func alloc(size int32) int32 {
 	if size < 0 || int(size) > len(arena) {
 		return 0
 	}
-	// address of a package-level array: stable, in linear memory
+	// address of a package-level array: stable, in linear memory.
+	// (pointer → int32 is the vet-clean direction; the reverse conversion
+	// lives in assert below via a typed pointer parameter.)
 	return int32(uintptr(unsafe.Pointer(&arena[0])))
 }
 
 var arena [arenaSize]byte
 
+// assert takes the payload as a typed pointer (wasmexport maps pointer
+// params to i32, so the host-side ABI is unchanged) — no uintptr →
+// unsafe.Pointer round-trip, which go vet's unsafeptr check rejects.
+//
 //go:wasmexport assert
-func assert(ptr int32, size int32) int32 {
-	if ptr == 0 || size < 0 {
+func assert(ptr *byte, size int32) int32 {
+	if ptr == nil || size < 0 {
 		return 2
 	}
-	buf := unsafe.Slice((*byte)(unsafe.Pointer(uintptr(ptr))), int(size))
+	buf := unsafe.Slice(ptr, int(size))
 	var spans []span
 	if err := json.Unmarshal(buf, &spans); err != nil {
 		return 2

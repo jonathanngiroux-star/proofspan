@@ -3,6 +3,8 @@ package judges
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,13 +37,14 @@ type Verdict struct {
 //  2. else the judge's provider: endpoint from the manifest; key from the
 //     provider's api_key_env environment variable (no-auth endpoints
 //     declare no api_key_env — local vLLM/ollama)
+//
 // A judge whose fingerprint contains UNPINNED refuses execution — a
 // placeholder pin is a hard error, never a silent grade.
 type Engine struct {
-	manifest      *Manifest
-	http          *http.Client
-	apiKey        string // explicit override; beats provider env vars
-	endpoint      string // explicit override; beats provider endpoints
+	manifest *Manifest
+	http     *http.Client
+	apiKey   string // explicit override; beats provider env vars
+	endpoint string // explicit override; beats provider endpoints
 }
 
 // NewEngine wires an engine over a validated manifest.
@@ -97,9 +100,14 @@ func (e *Engine) resolve(j Judge) (endpoint, apiKey string, err error) {
 		}
 		// empty APIKeyEnv: no-auth endpoint (local vLLM/ollama) — key stays ""
 	}
-	if apiKey != "" && !strings.HasPrefix(apiKey, "Bearer ") {
-		// served raw; normalize once
-		apiKey = apiKey
+	if apiKey != "" {
+		// Keys are stored raw and get one "Bearer " prefix at the call
+		// sites. Provider docs commonly show the key WITH its prefix
+		// ("Bearer nvapi-...") and users paste it into the env var —
+		// strip it once here so requests never send "Bearer Bearer ...".
+		if strings.HasPrefix(strings.ToLower(apiKey), "bearer ") {
+			apiKey = apiKey[len("Bearer "):]
+		}
 	}
 	return endpoint, apiKey, nil
 }
@@ -125,27 +133,33 @@ func (e *Engine) Judge(ctx context.Context, judgeID, trajectoryID string, spans 
 	return e.judgeCall(ctx, j, trajectoryID, spans, endpoint, apiKey)
 }
 
-// judgeCall does the fingerprint verification and grading call against a
-// resolved endpoint. The served model must match the pinned fingerprint's
-// model segment exactly, or the call is refused before any grading.
+// judgeCall verifies the pinned fingerprint against the endpoint and
+// grades. The served model card (GET /models/<model>) must match the pin
+// on BOTH segments: the card's id equals the pinned model id, and the
+// sha256 of the exact card body equals the pinned @sha256: hash. A
+// provider that silently re-serves a changed card under the same id is
+// refused — the hash is the pin, not the name.
 func (e *Engine) judgeCall(ctx context.Context, j Judge, trajectoryID string, spans []schema.Span, endpoint, apiKey string) (*Verdict, error) {
 	judgeID := j.ID
-	pinnedModel := j.ModelFingerprint
-	if i := strings.Index(pinnedModel, "@sha256:"); i > 0 {
-		pinnedModel = pinnedModel[:i]
+	model, pinnedHash, ok := strings.Cut(j.ModelFingerprint, "@sha256:")
+	if !ok || model == "" || pinnedHash == "" {
+		return nil, fmt.Errorf("judge %q: model_fingerprint %q must be <model>@sha256:<hash of the /models/<model> response body> — a model name alone is not a pin (docs/judges.md rule 1)", judgeID, j.ModelFingerprint)
 	}
-	// resolve the served model and compare against the pin
-	served, err := e.servedModel(ctx, endpoint, pinnedModel, apiKey)
+	// resolve the served model card and compare against the pin
+	servedID, servedHash, err := e.servedModel(ctx, endpoint, model, apiKey)
 	if err != nil {
 		return nil, fmt.Errorf("resolve model at %s: %w", endpoint, err)
 	}
-	if served != pinnedModel {
-		return nil, fmt.Errorf("fingerprint mismatch: judge %q pinned %s but endpoint serves %s — refusing to grade", judgeID, pinnedModel, served)
+	if servedID != model {
+		return nil, fmt.Errorf("fingerprint mismatch: judge %q pinned %s but endpoint serves %s — refusing to grade", judgeID, model, servedID)
+	}
+	if servedHash != pinnedHash {
+		return nil, fmt.Errorf("fingerprint mismatch: judge %q pinned %s@sha256:%s but the endpoint's model card hashes to sha256:%s (the card body changed — update the pin deliberately or refuse) — refusing to grade", judgeID, model, pinnedHash, servedHash)
 	}
 	prompt := buildJudgePrompt(j, spans)
 	body, err := json.Marshal(map[string]any{
-		"model":    pinnedModel,
-		"messages": []map[string]string{{"role": "user", "content": prompt}},
+		"model":       model,
+		"messages":    []map[string]string{{"role": "user", "content": prompt}},
 		"temperature": 0,
 	})
 	if err != nil {
@@ -204,32 +218,39 @@ func (e *Engine) judgeCall(ctx context.Context, j Judge, trajectoryID string, sp
 	return verdict, nil
 }
 
-// servedModel fetches GET {endpoint}/models/{model} and returns its id.
-// apiKey may be empty (no-auth local endpoints).
-func (e *Engine) servedModel(ctx context.Context, endpoint, model, apiKey string) (string, error) {
+// servedModel fetches GET {endpoint}/models/{model} and returns the card's
+// id plus the sha256 hex of the EXACT response body (the fingerprint's
+// @sha256: segment — docs/judges.md rule 1). apiKey may be empty
+// (no-auth local endpoints).
+func (e *Engine) servedModel(ctx context.Context, endpoint, model, apiKey string) (string, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSuffix(endpoint, "/")+"/models/"+model, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	resp, err := e.http.Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
-		return "", fmt.Errorf("models endpoint %d: %s", resp.StatusCode, string(b))
+		return "", "", fmt.Errorf("models endpoint %d: %s", resp.StatusCode, string(b))
+	}
+	card, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", err
 	}
 	var out struct {
 		ID string `json:"id"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", err
+	if err := json.Unmarshal(card, &out); err != nil {
+		return "", "", err
 	}
-	return out.ID, nil
+	sum := sha256.Sum256(card)
+	return out.ID, hex.EncodeToString(sum[:]), nil
 }
 
 // builtinJudge runs the deterministic reference implementation.

@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	totalSpans    = 10000
-	spansPerTraj  = 25
-	baseMs        = 1727452800000 // 2024-09-27T16:00:00Z
-	models        = "gpt-4o-2024-08-06,gpt-4o-mini-2024-07-18,claude-3-5-sonnet-20241022"
-	vendorPrefix  = "vd_"
+	totalSpans   = 10000
+	spansPerTraj = 25
+	baseMs       = 1727452800000 // 2024-09-27T16:00:00Z
+	models       = "gpt-4o-2024-08-06,gpt-4o-mini-2024-07-18,claude-3-5-sonnet-20241022"
+	vendorPrefix = "vd_"
 )
 
 func main() {

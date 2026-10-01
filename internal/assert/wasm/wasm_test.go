@@ -33,6 +33,40 @@ func newTestRegistry(t *testing.T) *Registry {
 	return reg
 }
 
+// TestParseName disambiguates the two filename contracts: <id>@<ver>.wasm
+// splits on @; <id>-<ver>.wasm splits on the LAST hyphen (an id may contain
+// hyphens: span-correlation-2@1.0.0.wasm is id "span-correlation-2").
+// A bare <id>.wasm with no separator must error, not silently register.
+func TestParseName(t *testing.T) {
+	for _, tc := range []struct {
+		stem    string
+		wantID  string
+		wantVer string
+		wantErr bool
+	}{
+		{"span-correlation@1.0.0", "span-correlation", "1.0.0", false},
+		{"span-correlation-1.0.0", "span-correlation", "1.0.0", false},
+		{"span-correlation-2@1.0.0", "span-correlation-2", "1.0.0", false},
+		{"span-correlation-2-1.0.0", "span-correlation-2", "1.0.0", false},
+		{"bare", "", "", true},
+	} {
+		id, ver, err := parseName(tc.stem)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("%q: want error, got (%q, %q)", tc.stem, id, ver)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("%q: %v", tc.stem, err)
+			continue
+		}
+		if id != tc.wantID || ver != tc.wantVer {
+			t.Errorf("%q: got (%q, %q), want (%q, %q)", tc.stem, id, ver, tc.wantID, tc.wantVer)
+		}
+	}
+}
+
 func TestSpanCorrelationPassesCorrelatedTrajectory(t *testing.T) {
 	reg := newTestRegistry(t)
 	spans := []schema.Span{

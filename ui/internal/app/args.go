@@ -102,9 +102,9 @@ func EvalArgs(c EvalConfig) ([]string, error) {
 // ServeConfig drives `proofspan serve`. The SCIM token goes to the
 // environment — it must never appear in argv (visible in ps output).
 type ServeConfig struct {
-	DB       string
-	Addr     string
-	SCIM     bool
+	DB        string
+	Addr      string
+	SCIM      bool
 	SCIMToken string
 }
 

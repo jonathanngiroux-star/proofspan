@@ -162,7 +162,8 @@ func ingest(st *store.Store, trajectories []schema.Trajectory, spansByTrajectory
 		}
 		written += len(spans)
 	}
-	fmt.Printf("migrated %d trajectories, %d spans into %s\n", len(trajectories), written, dbPath)
+	// human status goes to stderr; stdout stays machine-clean
+	fmt.Fprintf(os.Stderr, "migrated %d trajectories, %d spans into %s\n", len(trajectories), written, dbPath)
 	return nil
 }
 
@@ -206,7 +207,10 @@ func runEval(args []string) error {
 	}
 	judgeIDs := splitCSV(*runJudges)
 	runner := evalpkg.NewRunner(reg)
-	pins := parsePins(*assertions)
+	pins, err := parsePins(*assertions)
+	if err != nil {
+		return err
+	}
 	if len(pins) == 0 {
 		pins = []struct{ id, ver string }{{"span-correlation", "1.0.0"}}
 	}
@@ -254,7 +258,7 @@ func runJudgesOver(ctx context.Context, eng *judges.Engine, st *store.Store, jud
 		v, err := eng.Judge(ctx, jid, trajID, spans)
 		if err != nil {
 			rep.Errored++
-			fmt.Printf("judge %s: error: %v\n", jid, err)
+			fmt.Fprintf(os.Stderr, "judge %s: error: %v\n", jid, err)
 			continue
 		}
 		rep.Total++
@@ -266,7 +270,7 @@ func runJudgesOver(ctx context.Context, eng *judges.Engine, st *store.Store, jud
 		default:
 			rep.Errored++
 		}
-		fmt.Printf("judge %s: %s (%s) %s\n", jid, v.Status, v.JudgeFingerprint, v.Detail)
+		fmt.Fprintf(os.Stderr, "judge %s: %s (%s) %s\n", jid, v.Status, v.JudgeFingerprint, v.Detail)
 		detail := map[string]any{"detail": v.Detail, "score": v.Score}
 		if len(v.Raw) > 0 {
 			detail["raw"] = json.RawMessage(v.Raw)
@@ -387,20 +391,30 @@ func buildRegistryFromSource(binDir string) error {
 	return nil
 }
 
-func parsePins(s string) []struct{ id, ver string } {
+func parsePins(s string) ([]struct{ id, ver string }, error) {
 	if s == "" {
-		return nil
+		return nil, nil // no explicit pins: caller applies the default
 	}
 	var pins []struct{ id, ver string }
 	for _, part := range strings.Split(s, ",") {
-		id, ver, ok := strings.Cut(strings.TrimSpace(part), "@")
-		if ok && id != "" && ver != "" {
-			pins = append(pins, struct{ id, ver string }{id, ver})
+		p := strings.TrimSpace(part)
+		if p == "" {
+			continue // tolerate trailing commas / ", ,"
 		}
+		id, ver, ok := strings.Cut(p, "@")
+		if !ok || id == "" || ver == "" {
+			// Fail closed: a malformed pin must never silently fall back
+			// to the default assertion set — the user thinks their pin
+			// ran and the gate green-lit an eval that never ran it.
+			return nil, fmt.Errorf("invalid --assertions pin %q: want id@version (e.g. span-correlation@1.0.0)", p)
+		}
+		pins = append(pins, struct{ id, ver string }{id, ver})
 	}
-	return pins
+	return pins, nil
 }
 
+// printEvalReport writes the machine-readable reports to stdout (the only
+// thing on stdout — jq-consumable) and the human summary to stderr.
 func printEvalReport(reports []*evalpkg.TrajectoryReport) error {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
@@ -410,7 +424,7 @@ func printEvalReport(reports []*evalpkg.TrajectoryReport) error {
 			totalPass++
 		}
 	}
-	fmt.Printf("eval: %d/%d trajectories pass\n", totalPass, len(reports))
+	fmt.Fprintf(os.Stderr, "eval: %d/%d trajectories pass\n", totalPass, len(reports))
 	if err := enc.Encode(reports); err != nil {
 		return err
 	}
@@ -452,7 +466,8 @@ func runServe(args []string) error {
 	if scimToken != "" {
 		authNote = "bearer auth enforced"
 	}
-	fmt.Printf("proofspan serve listening on %s (scim=%v, auth=%s, db=%s)\n", *addr, *scimOn, authNote, *dbPath)
-	fmt.Printf("note: HTTP only — terminate TLS at your reverse proxy before exposing beyond localhost\n")
+	// human status to stderr; stdout stays clean for pipe consumers
+	fmt.Fprintf(os.Stderr, "proofspan serve listening on %s (scim=%v, auth=%s, db=%s)\n", *addr, *scimOn, authNote, *dbPath)
+	fmt.Fprintf(os.Stderr, "note: HTTP only — terminate TLS at your reverse proxy before exposing beyond localhost\n")
 	return http.ListenAndServe(*addr, srv.Handler())
 }
