@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -37,6 +38,19 @@ func (w wrapper) Init() tea.Cmd { return nil }
 func (w wrapper) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch t := msg.(type) {
 	case tea.KeyMsg:
+		// wizard input mode eats every key first: the user is typing a
+		// path; tab-switch keys must not fire mid-edit.
+		if on, _, _ := w.m.WizardInputActive(); on {
+			// In input mode every key goes to the field — including 'q'
+			// (paths contain it: proofspan.sqlite, /sql/...). Only ctrl+c
+			// exits mid-edit, as in any editor.
+			if t.String() == "ctrl+c" {
+				w.m.Update(app.WizardInputKeyMsg{Key: "esc"})
+			} else {
+				w.m.Update(app.WizardInputKeyMsg{Key: t.String()})
+			}
+			return w, nil
+		}
 		switch t.String() {
 		case "q", "ctrl+c":
 			if w.m.ServeRunning() && w.proc != nil {
@@ -52,7 +66,45 @@ func (w wrapper) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			w.m.Update(app.TabSelectMsg{Tab: app.TabEvaluate})
 		case "4":
 			w.m.Update(app.TabSelectMsg{Tab: app.TabServe})
+		case "5":
+			w.m.Update(app.TabSelectMsg{Tab: app.TabDonate})
+		case "c", "C":
+			// copy donate address from the donate tab (c = ETH, shift+C = BTC;
+			// the pane shows both keys)
+			if w.m.ActiveTab() == app.TabDonate {
+				text := app.DonateETH
+				if t.String() == "C" {
+					text = app.DonateBTC
+				}
+				return w, copyToClipboardCmd(text)
+			}
+		case "w":
+			// wizard: the guided walkthrough (report → dry-run → migrate → eval)
+			if _, on := w.m.WizardState(); on {
+				w.m.Update(app.WizardToggleMsg{}) // close
+			} else {
+				// prefill from the tabs so the wizard starts where the user is
+				w.m.Update(app.WizardToggleMsg{})
+				mig := w.m.MigrateCfg()
+				w.m.Update(app.WizardSetInputsMsg{Source: mig.Source, File: mig.File, DB: mig.DB})
+			}
+		case "i":
+			// wizard inline input: type the export path etc. right here
+			if _, on := w.m.WizardState(); on {
+				w.m.Update(app.WizardInputModeMsg{})
+			}
+		case "n":
+			if _, on := w.m.WizardState(); on {
+				w.m.Update(app.WizardNextMsg{})
+			}
+		case "b":
+			if _, on := w.m.WizardState(); on {
+				w.m.Update(app.WizardBackMsg{})
+			}
 		case "enter", "r":
+			if _, on := w.m.WizardState(); on {
+				return w, w.startWizardCommand()
+			}
 			return w, w.startCommand()
 		case "s":
 			if w.m.ActiveTab() == app.TabServe {
@@ -96,6 +148,9 @@ func (w wrapper) startCommand() tea.Cmd {
 		args, err = w.m.EvalCommandArgs()
 	case app.TabServe:
 		return w.startServe()
+	case app.TabDonate:
+		// nothing to run on the donate tab
+		return nil
 	}
 	if err != nil {
 		w.m.Update(app.LogMsg{Line: "config error: " + err.Error()})
@@ -109,11 +164,52 @@ func (w wrapper) startCommand() tea.Cmd {
 	id = w.m.PendingCmdID()
 	r := &app.Runner{} // Dir="" → inherit cwd, matching CLI-at-a-terminal semantics
 	return tea.Batch(func() tea.Msg {
-		code, err := r.Run(args, env, func(line string) {})
+		var lines []string
+		code, err := r.Run(args, env, func(line string) { lines = append(lines, line) })
 		if err != nil {
 			return app.LogMsg{Line: "error: " + err.Error()}
 		}
-		return app.CmdDoneMsg{ID: id, Code: code}
+		return app.CmdDoneMsg{ID: id, Code: code, Lines: lines}
+	})
+}
+
+// startWizardCommand runs the current wizard step's command — the same
+// Runner path as a normal tab run.
+func (w wrapper) startWizardCommand() tea.Cmd {
+	w.m.Update(app.WizardRunMsg{})
+	if !w.m.Busy() || w.m.PendingCmdID() == 0 {
+		return nil // refused: invalid inputs or nothing to run on this page
+	}
+	id := w.m.PendingCmdID()
+	// capture argv now — the model doesn't expose the built Cmd
+	wiz, _ := w.m.WizardState()
+	var (
+		args []string
+		err  error
+	)
+	switch wiz.Step() {
+	case app.StepAnalyze:
+		args, err = wiz.ReportCommandArgs()
+	case app.StepPlan:
+		args, err = wiz.PlanCommandArgs()
+	case app.StepMigrate:
+		args, err = wiz.MigrateCommandArgs()
+	case app.StepEval:
+		args, err = wiz.EvalCommandArgs()
+	default:
+		return nil
+	}
+	if err != nil {
+		return nil
+	}
+	r := &app.Runner{}
+	return tea.Batch(func() tea.Msg {
+		var lines []string
+		code, err := r.Run(args, nil, func(line string) { lines = append(lines, line) })
+		if err != nil {
+			return app.LogMsg{Line: "error: " + err.Error()}
+		}
+		return app.CmdDoneMsg{ID: id, Code: code, Lines: lines}
 	})
 }
 
@@ -150,6 +246,7 @@ func (w wrapper) View() string {
 		{"2 Migrate", app.TabMigrate},
 		{"3 Evaluate", app.TabEvaluate},
 		{"4 Serve", app.TabServe},
+		{"5 Donate", app.TabDonate},
 	}
 	for i, t := range tabs {
 		style := tabStyle
@@ -165,7 +262,11 @@ func (w wrapper) View() string {
 
 	// active pane fields (rendered read-only; the user edits via prompts
 	// in v0.1 — tab+enter run covers the 90% path)
-	b.WriteString(w.pane())
+	if wiz, on := m.WizardState(); on {
+		b.WriteString(w.wizardPane(wiz))
+	} else {
+		b.WriteString(w.pane())
+	}
 	b.WriteString("\n\n")
 
 	// status
@@ -187,7 +288,14 @@ func (w wrapper) View() string {
 		b.WriteString(logStyle.Render(l) + "\n")
 	}
 
-	b.WriteString("\n" + helpStyle.Render("keys: 1-4 tabs · enter/r run · s start/stop serve · q quit"))
+	help := "keys: 1-5 tabs · enter/r run · s serve · w wizard · q quit"
+	if m.ActiveTab() == app.TabDonate {
+		help = "donate: c copy ETH · C copy BTC · 1-5 tabs · q quit"
+	}
+	if _, on := m.WizardState(); on {
+		help = "wizard: n next · b back · i input fields · enter/r run step · w close · q quit"
+	}
+	b.WriteString("\n" + helpStyle.Render(help))
 	return b.String()
 }
 
@@ -212,6 +320,71 @@ func (w wrapper) pane() string {
 			state = "UP"
 		}
 		return fmt.Sprintf("db:    %s\naddr:  %s\nscim:  %t\nstate: %s", c.DB, c.Addr, c.SCIM, state)
+	case app.TabDonate:
+		addrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("251"))
+		return fmt.Sprintf("Proofspan is donation-supported, never gated.\nIf it killed your eval-spreadsheet week:\n\nEthereum / USDC (ERC-20)\n%s\n[c copy ETH]\n\nBitcoin\n%s\n[C copy BTC]",
+			addrStyle.Render(app.DonateETH), addrStyle.Render(app.DonateBTC))
+	}
+	return ""
+}
+
+// wizardPane renders the active wizard page (title, body, inputs, summary).
+func (w wrapper) wizardPane(wiz *app.Wizard) string {
+	var b strings.Builder
+	b.WriteString(wiz.StepTitle() + "\n")
+	// step indicator line: explicit, testable, and readable mid-flow
+	b.WriteString(fmt.Sprintf("(wizard step %d/7 — n next, b back, r run, i input, w close)\n", int(wiz.Step())+1))
+	b.WriteString(strings.Repeat("─", 46) + "\n")
+	body := wiz.StepBody()
+	// wrap the guidance at ~62 cols so the pane stays readable
+	for _, para := range strings.Split(body, "\n") {
+		for len(para) > 62 {
+			cut := strings.LastIndex(para[:62], " ")
+			if cut <= 0 {
+				cut = 62
+			}
+			b.WriteString(para[:cut] + "\n")
+			para = para[cut:]
+		}
+		b.WriteString(para + "\n")
+	}
+	// inline input line (when active)
+	if on, field, buf := w.m.WizardInputActive(); on {
+		b.WriteString("\n  input > " + buf + "\n")
+		b.WriteString("  (" + w.wizardInputFieldNameRuntime(field) + " — enter commits, esc cancels)\n")
+	}
+	a, p, mg, e := wiz.Summaries()
+	switch wiz.Step() {
+	case app.StepAnalyze:
+		if a != "" {
+			b.WriteString("\n  " + logStyle.Render(a))
+		}
+	case app.StepPlan:
+		if p != "" {
+			b.WriteString("\n  " + logStyle.Render(p))
+		}
+	case app.StepMigrate:
+		if mg != "" {
+			b.WriteString("\n  " + logStyle.Render(mg))
+		}
+	case app.StepEval:
+		if e != "" {
+			b.WriteString("\n  " + logStyle.Render(e))
+		}
+	}
+	return b.String()
+}
+
+// wizardInputFieldNameRuntime maps the field index to its label for the
+// renderer (mirrors the model's name table).
+func (w wrapper) wizardInputFieldNameRuntime(field int) string {
+	switch field {
+	case 0:
+		return "source (langsmith|honeyhive)"
+	case 1:
+		return "export file path"
+	case 2:
+		return "database path"
 	}
 	return ""
 }
@@ -221,6 +394,39 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// copyToClipboardCmd copies text to the terminal's clipboard using OSC 52 —
+// the escape sequence every modern terminal (kitty, iTerm2, WezTerm, Windows
+// Terminal, gnome-terminal with OSC 52 support) understands, including over
+// SSH. It runs as a tea.Cmd so the write happens off the render loop, and
+// lands a status message the View renders.
+func copyToClipboardCmd(text string) tea.Cmd {
+	enc := base64.StdEncoding.EncodeToString([]byte(text))
+	// OSC 52: ESC ] 52 ; c ; <base64> BEL  — 'c' is the clipboard selection.
+	seq := "\x1b]52;c;" + enc + "\x07"
+	which := "ETH"
+	if strings.HasPrefix(text, "bc1") {
+		which = "BTC"
+	}
+	return func() tea.Msg {
+		// Write to the TTY bubbletea handed us — tea's output goes through
+		// the same writer, so the sequence reaches the terminal even over
+		// SSH with the pty attached.
+		if f, ok := ttyWriter(); ok {
+			_, _ = f.WriteString(seq)
+		}
+		return app.LogMsg{Line: "donate: " + which + " address copied to clipboard"}
+	}
+}
+
+// ttyWriter opens the controlling terminal for the OSC 52 write.
+func ttyWriter() (*os.File, bool) {
+	f, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return nil, false
+	}
+	return f, true
 }
 
 func main() {

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "proofspan-gui",
+  "outputfilename": "proofspan-gui",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:build": "",
+  "frontend:dev:watcherUrl": "http://localhost:34115",
+  "author": {
+    "name": "jonathanngiroux-star"
+  },
+  "info": {
+    "productName": "Proofspan",
+    "productVersion": "0.2.0",
+    "comments": "Self-hosted agent evaluation harness — GUI over the proofspan CLI"
+  }
+}

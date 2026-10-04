@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0f1116">
+  <title>Proofspan</title>
+  <link rel="stylesheet" href="main.css">
+</head>
+<body>
+  <header>
+    <nav id="tabs" aria-label="Sections">
+      <button data-view="analyze" class="tab active" accesskey="1">Analyze</button>
+      <button data-view="migrate" class="tab" accesskey="2">Migrate</button>
+      <button data-view="evaluate" class="tab" accesskey="3">Evaluate</button>
+      <button data-view="trajectories" class="tab" accesskey="4">Trajectories</button>
+      <button data-view="judges" class="tab" accesskey="5">Judges</button>
+      <button data-view="serve" class="tab" accesskey="6">Serve</button>
+      <button data-view="donate" class="tab" accesskey="7">Donate</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- First-run wizard: a WORKING guide — every step carries the fields
+         and actions needed to complete it (inputs, run, summaries, output). -->
+    <div id="wizard-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-label="Getting started wizard">
+      <div class="wizard">
+        <div class="wizard-head">
+          <h2 id="wizard-title"></h2>
+          <span id="wizard-progress" class="hint"></span>
+        </div>
+        <p id="wizard-body" class="wizard-body"></p>
+        <div id="wizard-inputs" class="grid hidden">
+          <label>Source
+            <select id="wizard-source">
+              <option value="langsmith" selected>langsmith</option>
+              <option value="honeyhive">honeyhive</option>
+            </select>
+          </label>
+          <label class="wide">Export file
+            <span class="file-row">
+              <input id="wizard-file" type="text" placeholder="/path/to/traces.jsonl">
+              <button id="wizard-browse" type="button" class="secondary">Browse…</button>
+            </span>
+          </label>
+          <label class="wide">Database
+            <input id="wizard-db" type="text" value="proofspan.sqlite">
+          </label>
+          <p class="wizard-note">Both converters ship at 100% field parity on the shared corpus (CI-enforced). The export is one line per run/event, as produced by the platform's export.</p>
+        </div>
+        <div id="wizard-summary" class="pane wizard-summary hidden"></div>
+        <div id="wizard-tail" class="wizard-tail hidden"></div>
+        <div id="wizard-error" class="wizard-error hidden"></div>
+        <div id="wizard-done" class="hidden">
+          <ul class="done-list">
+            <li><span class="done-step">Analyzed</span> <span id="done-analyzed" class="mono"></span></li>
+            <li><span class="done-step">Planned</span> <span id="done-planned" class="mono"></span></li>
+            <li><span class="done-step">Migrated</span> <span id="done-migrated" class="mono"></span></li>
+            <li><span class="done-step">Evaluated</span> <span id="done-eval" class="mono"></span></li>
+          </ul>
+          <p class="wizard-note">Proofspan is donation-supported, never gated. If it killed your eval-spreadsheet week:</p>
+          <div class="address">
+            <h3>Ethereum / USDC (ERC-20)</h3>
+            <code id="done-eth"></code>
+            <button class="secondary copy" data-copy="done-eth">Copy</button>
+          </div>
+          <div class="address">
+            <h3>Bitcoin</h3>
+            <code id="done-btc"></code>
+            <button class="secondary copy" data-copy="done-btc">Copy</button>
+          </div>
+        </div>
+        <div class="wizard-actions">
+          <button id="wizard-back" class="secondary">Back</button>
+          <button id="wizard-run" class="primary">Run this step</button>
+          <button id="wizard-next" class="primary">Next</button>
+          <button id="wizard-skip" class="ghost">Skip — I know my way</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Analyze: read-only report over an export -->
+    <section id="view-analyze" class="view active">
+      <h2>Analyze export <span class="hint">read-only</span></h2>
+      <form id="form-analyze" class="grid">
+        <label>Source
+          <select id="analyze-source">
+            <option value="langsmith" selected>langsmith</option>
+            <option value="honeyhive">honeyhive</option>
+          </select>
+        </label>
+        <label class="wide">Export file
+          <input id="analyze-file" type="text" placeholder="/path/to/traces.jsonl" required>
+        </label>
+        <label class="wide">Report dir (optional)
+          <input id="analyze-out" type="text" placeholder="optional: output dir for the markdown report">
+        </label>
+        <div class="actions"><button type="submit" class="primary">Analyze export</button></div>
+      </form>
+    </section>
+
+    <!-- Migrate: ingest, with the dry-run plan viewer -->
+    <section id="view-migrate" class="view">
+      <h2>Migrate</h2>
+      <form id="form-migrate" class="grid">
+        <label>Source
+          <select id="migrate-source">
+            <option value="langsmith" selected>langsmith</option>
+            <option value="honeyhive">honeyhive</option>
+          </select>
+        </label>
+        <label class="wide">Export file
+          <input id="migrate-file" type="text" placeholder="/path/to/traces.jsonl" required>
+        </label>
+        <label>Database
+          <input id="migrate-db" type="text" value="proofspan.sqlite" required>
+        </label>
+        <label class="check wide">
+          <input id="migrate-dryrun" type="checkbox"> Dry-run (plan only, no writes)
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary">Migrate</button>
+          <button type="button" id="migrate-plan" class="secondary">Preview dry-run plan</button>
+        </div>
+      </form>
+      <div id="plan-result" class="pane hidden">
+        <h3>Dry-run plan <span class="hint" id="plan-meta"></span></h3>
+        <div class="plan-summary" id="plan-summary"></div>
+        <details open><summary>Field mappings (<span id="plan-map-count">0</span>)</summary>
+          <table class="kv"><thead><tr><th>from</th><th>to</th><th>note</th></tr></thead><tbody id="plan-mappings"></tbody></table>
+        </details>
+        <details><summary>Dropped fields (<span id="plan-drop-count">0</span>)</summary>
+          <table class="kv"><thead><tr><th>field</th><th>note</th></tr></thead><tbody id="plan-dropped"></tbody></table>
+        </details>
+        <details><summary>Sample converted span</summary><pre id="plan-sample"></pre></details>
+      </div>
+    </section>
+
+    <!-- Evaluate: the gate -->
+    <section id="view-evaluate" class="view">
+      <h2>Evaluate</h2>
+      <form id="form-evaluate" class="grid">
+        <label class="wide">Database
+          <input id="eval-db" type="text" value="proofspan.sqlite" required>
+        </label>
+        <label class="wide">Trajectory (optional)
+          <input id="eval-trajectory" type="text" placeholder="optional: single trajectory ID (default: all)">
+        </label>
+        <label class="wide">Assertions (optional)
+          <input id="eval-assertions" type="text" placeholder="optional: id@version pins (default: span-correlation@1.0.0)">
+        </label>
+        <label class="wide">Judges (optional)
+          <input id="eval-judges" type="text" placeholder="optional: judge IDs, comma-separated (e.g. factual-consistency)">
+        </label>
+        <label class="wide">Judge endpoint (optional)
+          <input id="eval-endpoint" type="text" placeholder="optional: judge endpoint, e.g. http://localhost:8000/v1">
+        </label>
+        <label class="wide">Judge API key (optional — the manifest's env var is safer)
+          <input id="eval-apikey" type="password" autocomplete="off" placeholder="optional: judge API key">
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary">Run evaluation</button>
+          <button type="button" id="eval-reports" class="secondary">Run & show report table</button>
+        </div>
+      </form>
+      <div id="eval-result" class="pane hidden">
+        <h3>Report <span class="hint" id="eval-meta"></span></h3>
+        <table class="kv" id="eval-table">
+          <thead><tr><th>trajectory</th><th>status</th><th>passed</th><th>failed</th><th>errored</th></tr></thead>
+          <tbody id="eval-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Trajectories: list + span viewer over the public serve API -->
+    <section id="view-trajectories" class="view">
+      <h2>Trajectories <span class="hint">read-only, via the serve API</span></h2>
+      <form id="form-traj" class="grid">
+        <label class="wide">Database
+          <input id="traj-db" type="text" value="proofspan.sqlite" required>
+        </label>
+        <div class="actions">
+          <button type="submit" class="primary">List trajectories</button>
+        </div>
+      </form>
+      <div class="cols">
+        <ul id="traj-list" class="pane list hidden"><li class="empty">No trajectories — migrate an export first.</li></ul>
+        <div id="traj-detail" class="pane hidden">
+          <h3 id="traj-title"></h3>
+          <table class="kv" id="span-table">
+            <thead><tr><th>span</th><th>kind</th><th>duration</th></tr></thead>
+            <tbody id="span-rows"></tbody>
+          </table>
+          <pre id="span-detail" class="mono hidden"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Judges: read-only manifest viewer -->
+    <section id="view-judges" class="view">
+      <h2>Judge manifest <span class="hint">read-only</span></h2>
+      <form id="form-judges" class="grid">
+        <label class="wide">Database (locates the repo checkout for judges/manifest.json)
+          <input id="judges-db" type="text" value="proofspan.sqlite" required>
+        </label>
+        <div class="actions"><button type="submit" class="primary">Load manifest</button></div>
+      </form>
+      <div id="judges-result" class="pane hidden">
+        <h3 id="judges-ns"></h3>
+        <h4>Providers</h4>
+        <table class="kv"><thead><tr><th>name</th><th>endpoint</th><th>api key env</th></tr></thead><tbody id="judges-providers"></tbody></table>
+        <h4>Judges</h4>
+        <table class="kv"><thead><tr><th>id</th><th>fingerprint</th><th>provider</th><th>description</th></tr></thead><tbody id="judges-rows"></tbody></table>
+      </div>
+    </section>
+
+    <!-- Serve -->
+    <section id="view-serve" class="view">
+      <h2>Serve</h2>
+      <form id="form-serve" class="grid">
+        <label class="wide">Database
+          <input id="serve-db" type="text" value="proofspan.sqlite" required>
+        </label>
+        <label>Address
+          <input id="serve-addr" type="text" value="127.0.0.1:7400" required>
+        </label>
+        <label class="check wide">
+          <input id="serve-scim" type="checkbox"> Mount SCIM provider
+        </label>
+        <label class="wide">SCIM token (optional — empty = dev mode, localhost only)
+          <input id="serve-token" type="password" autocomplete="off" placeholder="PROOFSPAN_SCIM_TOKEN">
+        </label>
+        <div class="actions">
+          <button type="button" id="serve-start" class="primary">Start server</button>
+          <button type="button" id="serve-stop" class="secondary">Stop server</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Donate: exact addresses, copy buttons, no payment form -->
+    <section id="view-donate" class="view">
+      <h2>Support the project <span class="hint">optional, never gated</span></h2>
+      <p>If Proofspan saves you the eval-spreadsheet work, you can support development. No subscriptions, no paid tiers — the core is and stays MIT.</p>
+      <div class="address">
+        <h3>Ethereum / USDC (ERC-20)</h3>
+        <code id="donate-eth"></code>
+        <button class="secondary copy" data-copy="donate-eth">Copy</button>
+      </div>
+      <div class="address">
+        <h3>Bitcoin</h3>
+        <code id="donate-btc"></code>
+        <button class="secondary copy" data-copy="donate-btc">Copy</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div id="status" class="status">Ready.</div>
+    <div id="log-wrap">
+      <div class="log-head">Output <button id="log-clear" class="ghost">Clear</button></div>
+      <pre id="log"></pre>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+  <script src="testbridge.js"></script>
+  <script src="selftest.js"></script>
+</body>
+</html>

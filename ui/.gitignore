@@ -3,3 +3,6 @@
 /proofspan-tui
 cmd/proofspan-gui/proofspan-gui
 cmd/proofspan-tui/proofspan-tui
+
+# wails build output (wails build drops the binary here)
+cmd/proofspan-gui/build/

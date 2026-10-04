@@ -37,14 +37,16 @@ func (r *Runner) Pinned(id, version string) {
 	r.pins = append(r.pins, pin{id, version})
 }
 
-// TrajectoryReport is the eval outcome for one trajectory.
+// TrajectoryReport is the eval outcome for one trajectory. JSON tags keep
+// the machine-readable stdout channel snake_case, consistent with wasm.Result
+// and the report command (a jq consumer must not see PascalCase here).
 type TrajectoryReport struct {
-	TrajectoryID string
-	Results      []wasm.Result
-	Total        int
-	Passed       int
-	Failed       int
-	Errored      int
+	TrajectoryID string        `json:"trajectory_id"`
+	Results      []wasm.Result `json:"results"`
+	Total        int           `json:"total"`
+	Passed       int           `json:"passed"`
+	Failed       int           `json:"failed"`
+	Errored      int           `json:"errored"`
 }
 
 // Pass is true iff every assertion passed.

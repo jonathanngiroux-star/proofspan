@@ -123,12 +123,21 @@ Local HTTP server: `GET /healthz`, `GET /v1/trajectories`, `GET /v1/trajectories
 
 ## GUI
 
-A desktop front-end over the same commands lives in [`ui/`](ui) (separate Go module; Fyne's dependency tree and CGO stay out of the core binary). Four tabs — Analyze, Migrate, Evaluate, Serve — with a streaming output log and status bar. The SCIM token is passed via environment, never command-line arguments.
+A Wails v2 desktop front-end over the same commands lives in [`ui/cmd/proofspan-gui`](ui/cmd/proofspan-gui) (separate Go module; Wails' webview dependency tree and CGO stay out of the core binary). Seven views — Analyze, Migrate (with the dry-run plan viewer), Evaluate (report table), Trajectories (span viewer), Judges (manifest viewer), Serve, and Donate — with a streaming output log and status bar. The SCIM token is passed via environment, never command-line arguments, and secrets are redacted from the visible log.
+
+A first-run wizard walks the whole loop step by step — analyze an export → preview the dry-run plan → ingest → run the eval gate — using the exact commands the tabs produce. It opens once on first launch and is always reachable from the Wizard tab (or Alt+0).
 
 ```sh
-# build (requires a C compiler + OpenGL/X11 headers: xorg-dev libgl1-mesa-dev)
-cd ui/cmd/proofspan-gui && go build -o proofspan-gui .
-./proofspan-gui
+# one-time: install the Wails CLI
+go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+# dev: hot-reload window (frontend + Go bindings)
+cd ui/cmd/proofspan-gui && wails dev
+
+# build (Linux: gtk3 + webkit2gtk headers; Ubuntu 24.04/Arch ship 4.1, hence the tag)
+sudo apt-get install libgtk-3-dev libwebkit2gtk-4.1-dev   # Debian/Ubuntu
+cd ui/cmd/proofspan-gui && wails build -tags webkit2_41
+./build/bin/proofspan-gui
 ```
 
 The GUI looks for the CLI binary as `proofspan` on `PATH`, or set `PROOFSPAN_BIN=/path/to/proofspan`.
@@ -136,6 +145,8 @@ The GUI looks for the CLI binary as `proofspan` on `PATH`, or set `PROOFSPAN_BIN
 ## TUI
 
 For terminals, tmux, and SSH sessions: [`ui/cmd/proofspan-tui`](ui/cmd/proofspan-tui) (Bubble Tea, static binary, no CGO). Keys: `1`–`4` switch tabs (Analyze / Migrate / Evaluate / Serve), `enter`/`r` runs the active tab's command, `s` starts/stops the server on the Serve tab, `q` quits (stopping the server first).
+
+`w` opens the same guided wizard as the GUI — step by step through report → dry-run → migrate → eval, prefilled from the current tab config. Inside the wizard: `n` next, `b` back, `enter`/`r` run the step, `w` close.
 
 ```sh
 cd ui/cmd/proofspan-tui && go build -o proofspan-tui .

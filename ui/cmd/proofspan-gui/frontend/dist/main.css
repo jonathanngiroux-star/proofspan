@@ -1,0 +1,219 @@
+/* Proofspan GUI — desktop palette (dark, terminal-adjacent). */
+:root {
+  /* color-scheme:dark is what makes NATIVE controls render dark — the
+     select's dropdown popup, checkboxes, scrollbars, <details> markers.
+     Without it WebKitGTK draws the popup list white no matter how the
+     closed select is styled (the user-visible bug). */
+  color-scheme: dark;
+  --bg: #0f1116;
+  --panel: #161a22;
+  --panel2: #1b202b;
+  --border: #262c3a;
+  --text: #d6dae3;
+  --muted: #8b93a7;
+  --accent: #4f8cc9;
+  --ok: #3fb96a;
+  --warn: #d8a03e;
+  --bad: #d8564b;
+  --mono: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+header { border-bottom: 1px solid var(--border); background: var(--panel); }
+nav { display: flex; gap: 2px; padding: 6px 10px; }
+.tab {
+  background: none; border: none; color: var(--muted);
+  padding: 8px 14px; font-size: 13px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+main { flex: 1; overflow-y: auto; padding: 18px 22px; }
+.view { display: none; max-width: 980px; }
+.view.active { display: block; }
+h2 { font-size: 17px; font-weight: 600; margin-bottom: 14px; }
+h3 { font-size: 14px; margin: 12px 0 6px; }
+h4 { font-size: 13px; margin: 12px 0 4px; color: var(--muted); }
+.hint { color: var(--muted); font-size: 12px; font-weight: 400; margin-left: 8px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px 16px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+label.wide { grid-column: 1 / -1; }
+label.check { flex-direction: row; align-items: center; gap: 8px; }
+input[type="text"], input[type="password"], select {
+  background: var(--panel2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 7px 9px; font-size: 13px; font-family: var(--mono);
+  width: 100%;
+}
+input[type="text"]:focus, input[type="password"]:focus, select:focus {
+  outline: none; border-color: var(--accent);
+}
+input::placeholder { color: #5a6172; }
+
+/* The select's POPUP list is native chrome: with color-scheme:dark it
+   follows the page. Style the plain rows explicitly too; do NOT style
+   :hover/:active/:checked pseudo-states on <option> — WebKitGTK's popup
+   style resolution can deadlock on them (the selftest hang). The native
+   dark selection highlight from color-scheme:dark is the correct UX. */
+select option, select optgroup {
+  background: var(--panel2); color: var(--text);
+}
+
+/* checkboxes: accent-color tints the native box to the app's blue */
+input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+/* scrollbars: dark trough, subtle thumb (webkit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: #384154; }
+::-webkit-scrollbar-corner { background: var(--bg); }
+
+.actions { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 6px; }
+button.primary, button.secondary, button.ghost {
+  border-radius: 4px; cursor: pointer; font-size: 13px; padding: 8px 16px;
+  border: 1px solid transparent;
+}
+button.primary { background: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.15); }
+button.primary:disabled, button.secondary:disabled { opacity: .5; cursor: not-allowed; }
+button.secondary { background: var(--panel2); color: var(--text); border-color: var(--border); }
+button.secondary:hover { border-color: var(--accent); }
+button.ghost { background: none; border: none; color: var(--muted); font-size: 12px; padding: 2px 6px; }
+button.ghost:hover { color: var(--text); }
+
+.pane {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 6px; padding: 12px; margin-top: 14px;
+}
+/* display:none must win over every component's display rule regardless of
+   rule order (.overlay{display:flex} is defined later in this file and was
+   silently overriding it — the bug that made the wizard Skip button look
+   dead: the class toggled but the overlay never visually hid). */
+.hidden { display: none !important; }
+
+table.kv { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.kv th {
+  text-align: left; color: var(--muted); font-weight: 500;
+  border-bottom: 1px solid var(--border); padding: 4px 8px;
+}
+table.kv td { border-bottom: 1px solid var(--border); padding: 4px 8px; font-family: var(--mono); }
+table.kv tr:last-child td { border-bottom: none; }
+tr.pass td.status, td.pass { color: var(--ok); }
+tr.fail td.status, td.fail { color: var(--bad); }
+tr.error td.status, td.error { color: var(--warn); }
+
+.plan-summary { display: flex; gap: 18px; flex-wrap: wrap; margin-bottom: 10px; }
+.plan-summary .stat { font-size: 12px; color: var(--muted); }
+.plan-summary .stat b { display: block; font-size: 18px; color: var(--text); font-family: var(--mono); }
+
+details { margin-top: 8px; }
+summary { cursor: pointer; color: var(--muted); font-size: 12px; padding: 4px 0; }
+summary:hover { color: var(--text); }
+/* the disclosure triangle is native chrome — recolor it to the palette
+   (with color-scheme:dark it already renders light-on-dark; this pins the
+   exact tint on every webkit build) */
+summary::marker, details > summary::marker { color: var(--muted); }
+summary::-webkit-details-marker { color: var(--muted); }
+
+pre, .mono {
+  font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+  word-break: break-all;
+}
+#plan-sample, #span-detail {
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 10px; margin-top: 8px; max-height: 260px; overflow: auto;
+}
+
+.cols { display: grid; grid-template-columns: 260px 1fr; gap: 14px; margin-top: 14px; align-items: start; }
+ul.list { list-style: none; }
+ul.list li {
+  padding: 6px 10px; font-family: var(--mono); font-size: 12px;
+  border-bottom: 1px solid var(--border); cursor: pointer;
+}
+ul.list li:hover, ul.list li.selected { background: var(--panel2); color: var(--accent); }
+li.empty { color: var(--muted); cursor: default; font-family: system-ui; }
+
+#traj-detail table { margin-top: 8px; }
+#traj-title { margin-top: 0; }
+
+.address { margin-top: 14px; }
+.address h3 { margin-bottom: 6px; }
+.address code {
+  display: block; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 10px; font-family: var(--mono); font-size: 13px;
+  word-break: break-all; margin-bottom: 6px;
+}
+.copy { margin-top: 2px; }
+
+footer {
+  border-top: 1px solid var(--border); background: var(--panel);
+  display: grid; grid-template-columns: 200px 1fr; height: 200px;
+}
+.status {
+  padding: 10px 14px; font-size: 12px; color: var(--muted);
+  border-right: 1px solid var(--border); overflow-y: auto;
+}
+#log-wrap { display: flex; flex-direction: column; min-width: 0; }
+.log-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 10px; font-size: 12px; color: var(--muted);
+}
+#log {
+  flex: 1; overflow-y: auto; padding: 6px 10px;
+  font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+  word-break: break-all; color: #a8b0c2;
+}
+
+/* keep keyboard focus visible (audit: keyboard path for primary actions) */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* wizard (first-run walkthrough) */
+.overlay {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(5, 7, 10, 0.72);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(2px);
+}
+.wizard {
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 22px; width: min(680px, 92vw);
+  max-height: 90vh; overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+}
+.wizard-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.wizard-head h2 { margin: 0; }
+.wizard-body { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.wizard-summary { margin-top: 10px; font-family: var(--mono); font-size: 12px; }
+.wizard-error { color: var(--bad); font-size: 12px; margin-top: 8px; }
+.wizard-note { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.wizard-tail {
+  margin-top: 10px; max-height: 160px; overflow-y: auto;
+  background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+  padding: 8px 10px; font-family: var(--mono); font-size: 11px;
+  white-space: pre-wrap; word-break: break-all; color: #a8b0c2;
+}
+.file-row { display: flex; gap: 8px; }
+.file-row input { flex: 1; }
+.file-row button { white-space: nowrap; }
+.done-list { list-style: none; margin-top: 8px; }
+.done-list li { display: flex; gap: 10px; padding: 4px 0; font-size: 12px; border-bottom: 1px solid var(--border); }
+.done-list li:last-child { border-bottom: none; }
+.done-step { color: var(--muted); min-width: 84px; }
+.wizard-actions { display: flex; gap: 10px; margin-top: 16px; align-items: center; }
+.wizard-actions .ghost { margin-left: auto; }
+
+@media (max-width: 720px) {
+  .cols { grid-template-columns: 1fr; }
+  footer { grid-template-columns: 1fr; height: 260px; }
+}

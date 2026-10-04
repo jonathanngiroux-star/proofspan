@@ -16,17 +16,20 @@ import (
 )
 
 // Report is the analysis of one export file.
+// Report is the read-only pre-migration analysis of an export. JSON tags
+// keep the machine-readable stdout channel snake_case, consistent with
+// wasm.Result and eval's TrajectoryReport.
 type Report struct {
-	Source        string
-	Path          string
-	LinesTotal    int
-	LinesParsed   int
-	ParseErrors   int
-	Trajectories  int
-	SpansByKind   map[string]int
-	FieldCoverage map[string]int // known key → spans carrying it
-	UnknownKeys   map[string]int // unknown key → occurrences
-	DurationMs    int64
+	Source        string         `json:"source"`
+	Path          string         `json:"path"`
+	LinesTotal    int            `json:"lines_total"`
+	LinesParsed   int            `json:"lines_parsed"`
+	ParseErrors   int            `json:"parse_errors"`
+	Trajectories  int            `json:"trajectories"`
+	SpansByKind   map[string]int `json:"spans_by_kind"`
+	FieldCoverage map[string]int `json:"field_coverage"` // known key → spans carrying it
+	UnknownKeys   map[string]int `json:"unknown_keys"`   // unknown key → occurrences
+	DurationMs    int64          `json:"duration_ms"`
 }
 
 // Analyze scans an export and produces the report. known is the set of
